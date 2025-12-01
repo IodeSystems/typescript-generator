@@ -1,7 +1,7 @@
 import nl.littlerobots.vcu.plugin.resolver.ModuleVersionCandidate
 
 group = "com.iodesystems.ts"
-version = "0.0.2-SNAPSHOT"
+version = "0.0.3-SNAPSHOT"
 description =
     "Typescript Client Generator"
 
