@@ -37,11 +37,12 @@ subprojects {
     apply(plugin = "java")
     apply(plugin = "maven-publish")
     apply(plugin = "kotlin")
+    apply(plugin = "org.jetbrains.dokka-javadoc")
     publishing {
         publications {
             create<MavenPublication>("mavenJava") {
                 from(components["java"])
-                artifact(tasks.javadoc) { classifier = "javadoc" }
+                artifact(tasks.dokkaGenerateJavadoc) { classifier = "javadoc" }
                 artifact(tasks.kotlinSourcesJar) { classifier = "sources" }
                 pom {
                     name.set(project.name)
