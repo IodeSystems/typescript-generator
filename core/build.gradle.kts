@@ -8,6 +8,7 @@ repositories {
 }
 
 plugins {
+    java
     kotlin("jvm")
     id("org.jetbrains.dokka-javadoc")
 }

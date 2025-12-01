@@ -36,14 +36,16 @@ versionCatalogUpdate {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "maven-publish")
-    apply(plugin = "kotlin")
-    apply(plugin = "org.jetbrains.dokka-javadoc")
+
+    java{
+        withSourcesJar()
+        withJavadocJar()
+    }
+
     publishing {
         publications {
             create<MavenPublication>("mavenJava") {
                 from(components["java"])
-                artifact(tasks.dokkaGenerateJavadoc) { classifier = "javadoc" }
-                artifact(tasks.kotlinSourcesJar) { classifier = "sources" }
                 pom {
                     name.set(project.name)
                     description.set(project.description)
