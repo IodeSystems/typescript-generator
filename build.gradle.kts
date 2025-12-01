@@ -44,7 +44,6 @@ subprojects {
         withSourcesJar()
         withJavadocJar()
     }
-
     publishing {
         publications {
             create<MavenPublication>("mavenJava") {

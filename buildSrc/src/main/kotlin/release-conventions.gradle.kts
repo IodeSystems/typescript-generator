@@ -86,7 +86,12 @@ tasks.register("releaseRevert") {
 }
 tasks.register("releasePublish") {
     group = "release"
-    dependsOn(tasks.clean, tasks.build, tasks.publish, tasks.closeAndReleaseStagingRepositories)
+
+    dependsOn(
+        tasks.clean, tasks.build,
+        subprojects.map { project -> project.tasks.publish },
+        tasks.closeAndReleaseStagingRepositories
+    )
     val overrideVersion = properties["overrideVersion"]?.toString()
     val version = properties["version"]!!.toString()
     doLast {
