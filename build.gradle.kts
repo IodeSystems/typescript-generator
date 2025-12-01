@@ -36,6 +36,7 @@ versionCatalogUpdate {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "maven-publish")
+    apply(plugin = "signing")
 
     group = rootProject.group.toString()
     version = rootProject.version.toString()
@@ -43,6 +44,10 @@ subprojects {
     java {
         withSourcesJar()
         withJavadocJar()
+    }
+    signing {
+        useGpgCmd()
+        sign(publishing.publications)
     }
     publishing {
         publications {
