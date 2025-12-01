@@ -1,6 +1,5 @@
 import com.iodesystems.build.Bash.bash
 import com.iodesystems.build.Release
-import org.gradle.kotlin.dsl.kotlin
 import java.time.Duration
 
 plugins {
@@ -16,44 +15,6 @@ val javadocJar: TaskProvider<Jar> by tasks.registering(Jar::class) {
     dependsOn(tasks.dokkaGeneratePublicationJavadoc)
     archiveClassifier.set("javadoc")
     from(tasks.dokkaGeneratePublicationJavadoc.get().outputDirectory)
-}
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            from(components["java"])
-            artifact(javadocJar)
-            artifact(tasks.kotlinSourcesJar) {
-                classifier = "sources"
-            }
-            pom {
-                name.set(project.name)
-                description.set(project.description)
-                url.set("https://iodesystems.github.io/typescript-generator/")
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://www.opensource.org/licenses/mit-license.php")
-                    }
-                }
-                developers {
-                    developer {
-                        id.set("nthalk")
-                        name.set("Carl Taylor")
-                        email.set("carl@etaylor.me")
-                        roles.add("owner")
-                        roles.add("developer")
-                        timezone.set("-8")
-                    }
-                }
-                scm {
-                    connection.set("scm:git:git@github.com:IodeSystems/typescript-generator.git")
-                    developerConnection.set("scm:git:git@github.com:IodeSystems/typescript-generator.git")
-                    url.set("https://iodesystems.github.io/typescript-generator/")
-                    tag.set("$version")
-                }
-            }
-        }
-    }
 }
 
 nexusPublishing {
