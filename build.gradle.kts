@@ -1,7 +1,7 @@
 import nl.littlerobots.vcu.plugin.resolver.ModuleVersionCandidate
 
 group = "com.iodesystems.ts"
-version = "0.0.4-SNAPSHOT"
+version = "0.0.1-SNAPSHOT"
 description = "Typescript Client Generator"
 
 repositories {
@@ -37,7 +37,10 @@ subprojects {
     apply(plugin = "java")
     apply(plugin = "maven-publish")
 
-    java{
+    group = rootProject.group.toString()
+    version = rootProject.version.toString()
+
+    java {
         withSourcesJar()
         withJavadocJar()
     }
@@ -48,7 +51,7 @@ subprojects {
                 from(components["java"])
                 pom {
                     name.set(project.name)
-                    description.set(project.description)
+                    description.set(rootProject.description)
                     url.set("https://iodesystems.github.io/typescript-generator/")
                     licenses {
                         license {
@@ -58,6 +61,8 @@ subprojects {
                     }
                     developers {
                         developer {
+                            organization.set("iodesystems")
+                            organizationUrl.set("https://iodesystems.com")
                             id.set("nthalk")
                             name.set("Carl Taylor")
                             email.set("carl@etaylor.me")
@@ -70,7 +75,7 @@ subprojects {
                         connection.set("scm:git:git@github.com:IodeSystems/typescript-generator.git")
                         developerConnection.set("scm:git:git@github.com:IodeSystems/typescript-generator.git")
                         url.set("https://iodesystems.github.io/typescript-generator/")
-                        tag.set("$version")
+                        tag.set("${rootProject.version}")
                     }
                 }
             }
