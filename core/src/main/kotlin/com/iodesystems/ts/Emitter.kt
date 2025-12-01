@@ -1,0 +1,311 @@
+package com.iodesystems.ts
+
+
+import com.iodesystems.ts.model.ExtractionResult
+import com.iodesystems.ts.model.TsBody
+import com.iodesystems.ts.model.TsType
+import com.iodesystems.ts.model.TsRef
+
+class Emitter(private val config: com.iodesystems.ts.Config) {
+
+    fun emitLib(): String = """
+        export type RequestInterceptor = (input: RequestInfo, init: RequestInit) => Promise<[RequestInfo, RequestInit]> | [RequestInfo, RequestInit]
+        export type ResponseInterceptor = (response: Response) => Promise<Response> | Response
+        export type ApiOptions = {
+          baseUrl?: string
+          requestInterceptor?: RequestInterceptor
+          responseInterceptor?: ResponseInterceptor
+          fetchImpl?: typeof fetch
+        }
+        
+        export function flattenQueryParams(path: string, params?: any, prefix: string|null = null): string {
+          if (params == null) return path
+          const out = new URLSearchParams()
+          const appendVal = (k: string, v: any) => { if (v === undefined || v === null) return; out.append(k, String(v)) }
+          const walk = (pfx: string, val: any) => {
+            if (val === null || val === undefined) return
+            if (Array.isArray(val)) {
+              for (let i = 0; i < val.length; i++) { walk(pfx + "[" + i + "]", val[i]) }
+            } else if (typeof val === 'object' && !(val instanceof Date) && !(val instanceof Blob)) {
+              for (const k of Object.keys(val)) {
+                const next = pfx ? (pfx + "." + k) : k
+                walk(next, (val as any)[k])
+              }
+            } else {
+              appendVal(pfx, val)
+            }
+          }
+          if (prefix) {
+            walk(prefix, params)
+          } else {
+            for (const k of Object.keys(params)) walk(k, (params as any)[k])
+          }
+          const qs = out.toString()
+          return qs ? (path + "?" + qs) : path
+        }
+        
+        async function fetchInternal(opts: ApiOptions, path: string, init: RequestInit): Promise<Response> {
+          const baseUrl = opts.baseUrl ?? ""
+          let input: RequestInfo = baseUrl + path
+          let options: RequestInit = init
+          if (opts.requestInterceptor) {
+            const out = await opts.requestInterceptor(input, options)
+            input = out[0]; options = out[1]
+          }
+          const f = opts.fetchImpl ?? fetch
+          let res = await f(input, options)
+          if (opts.responseInterceptor) {
+            res = await opts.responseInterceptor(res)
+          }
+          return res
+        }
+        """.trimIndent()
+
+    fun emitApis(
+        extraction: com.iodesystems.ts.model.ExtractionResult,
+        match: (String) -> Boolean = { true },
+        inlineTypes: Boolean = false
+    ): String {
+        val tsLines = mutableListOf<String>()
+        val apis =
+            extraction.apis.filter { config.includeApi(it.jvmQualifiedClassName) && match(it.jvmQualifiedClassName) }
+        // Keep a single emitted set across all selected APIs to avoid duplicating type aliases
+        val emitted = HashSet<String>()
+
+        fun baseAliasName(name: String): String {
+            // Strip generics, intersections and unions from alias name for declaration/lookup
+            return name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
+        }
+        // Fast lookup for known complex types by TS alias
+        val typesByAlias = extraction.types.associateBy { it.typeScriptTypeName }
+
+        apis.forEach { api ->
+            tsLines += "export class ${api.cls} {"
+            tsLines += "  constructor(private opts: ApiOptions = {}) {}"
+            api.apiMethods.forEach { m ->
+                val req = m.requestBodyType
+                val query = m.queryParamsType
+                val pathFields = m.pathTsFields
+                val res = m.responseBodyType
+                val resTs = res?.let { renderTypeName(it) } ?: "void"
+
+                // Build function signature in one pass: (req?, path?, query?)
+                val argParts = mutableListOf<String>()
+                if (req != null) argParts += "req: ${renderTypeName(req)}"
+                if (pathFields.isNotEmpty()) {
+                    val pathObj = pathFields.entries.joinToString(", ") { (placeholder, field) ->
+                        val opt = if (field.optional) "?" else ""
+                        "${field.name}${opt}: ${renderTypeName(field.type)}"
+                    }
+                    argParts += "path: { ${pathObj} }"
+                }
+                if (query != null) argParts += "query: ${renderTypeName(query)}"
+                val sig = "(" + argParts.joinToString(", ") + ")"
+
+                // Build path call part: apply replacements if path params exist
+                val pathExpr = if (pathFields.isEmpty()) {
+                    "\"${m.path}\""
+                } else {
+                    val rep = pathFields.entries.joinToString("") { (placeholder, field) ->
+                        ".replace(\"{${placeholder}}\", String(path.${field.name}))"
+                    }
+                    "\"${m.path}\"${rep}"
+                }
+
+                val pathCallPart = if (query != null) {
+                    "flattenQueryParams(${pathExpr}, query, null)"
+                } else {
+                    pathExpr
+                }
+
+                tsLines += "  ${m.name}${sig}: Promise<${resTs}> {"
+                tsLines += "    return fetchInternal(this.opts, ${pathCallPart}, {"
+                if (req != null) {
+                    tsLines += "      method: \"${m.httpMethod.name}\"," // method
+                    tsLines += "      headers: {'Content-Type': 'application/json'},"
+                    tsLines += "      body: JSON.stringify(req)"
+                } else {
+                    tsLines += "      method: \"${m.httpMethod.name}\"" // method
+                }
+                if (resTs == "void") {
+                    tsLines += "    }).then(r=>undefined as any)"
+                } else {
+                    tsLines += "    }).then(r=>r.json())"
+                }
+                tsLines += "  }"
+            }
+            tsLines += "}"
+            tsLines += ""
+
+            if (inlineTypes) {
+                // Emit aliases in a deterministic order similar to previous emitter
+                fun emitObjectAlias(t: TsType) {
+                    val alias = baseAliasName(t.typeScriptTypeName)
+                    if (!emitted.add(alias)) return
+                    // Ensure any intersected types are emitted first
+                    t.intersects.forEach { interName ->
+                        val interAlias = baseAliasName(interName)
+                        val ref = typesByAlias[interAlias]
+                        if (ref != null) {
+                            // recursively emit the intersected type alias
+                            emitObjectAlias(ref)
+                        }
+                    }
+                    val resolved = typesByAlias[alias] ?: t
+                    // Walk fields to emit dependent complex types first
+                    fun emitFieldRefType(rt: TsType?) {
+                        when (val b = rt?.body) {
+                            is TsBody.PrimitiveBody -> {
+                                typesByAlias[b.tsName]?.let { emitObjectAlias(it) }
+                            }
+                            is TsBody.ArrayBody -> emitFieldRefType(b.element)
+                            is TsBody.ObjectBody -> {
+                                // If this is a named complex type, ensure it is emitted as an alias
+                                val nestedAlias = baseAliasName(rt.typeScriptTypeName)
+                                val nested = typesByAlias[nestedAlias]
+                                if (nested != null) emitObjectAlias(nested)
+                                // Also walk its fields for deeper references
+                                b.tsFields.forEach { f -> emitFieldRefType(f.type) }
+                            }
+                            is TsBody.UnionBody -> {
+                                b.options.forEach { opt ->
+                                    // Emit object options as aliases
+                                    if (opt.body is TsBody.ObjectBody) emitObjectAlias(opt)
+                                    // And recurse into option field references
+                                    emitFieldRefType(opt)
+                                }
+                            }
+                            null -> {}
+                        }
+                    }
+                    val objPre = (resolved.body as? TsBody.ObjectBody)
+                    objPre?.tsFields?.forEach { f -> emitFieldRefType(f.type) }
+                    appendDocWithReferences(tsLines, resolved)
+                    val gp = if (resolved.genericParameters.isNotEmpty()) "<${resolved.genericParameters.joinToString(",")}>" else ""
+                    tsLines += "type ${alias}${gp} = {"
+                    val obj = (resolved.body as TsBody.ObjectBody)
+                    obj.tsFields.forEach { f ->
+                        val opt = if (f.optional) "?" else ""
+                        tsLines += "  ${f.name}${opt}: ${renderTypeName(f.type)}"
+                    }
+                    if (resolved.intersects.isNotEmpty()) {
+                        // Adjust intersects to include generic arguments when missing by inferring from current object's fields
+                        val adjusted = resolved.intersects.map { interName ->
+                            val base = baseAliasName(interName)
+                            val iface = typesByAlias[base]
+                            if (iface != null && iface.genericParameters.isNotEmpty() && !interName.contains('<')) {
+                                val ifaceFields = (iface.body as? TsBody.ObjectBody)?.tsFields ?: emptyList()
+                                val byName = obj.tsFields.associate { it.name to renderTypeName(it.type) }
+                                val args = ifaceFields.mapNotNull { byName[it.name] }
+                                if (args.size == ifaceFields.size && args.isNotEmpty()) base + "<" + args.joinToString(", ") + ">" else interName
+                            } else interName
+                        }
+                        tsLines += "} & " + adjusted.joinToString(" & ") { it }
+                    } else {
+                        tsLines += "}"
+                    }
+                    tsLines += ""
+                }
+
+                fun emitUnionAlias(name: String, jvm: String, u: TsBody.UnionBody) {
+                    // Do not emit aliases for unions of only primitive types; they are already
+                    // inlined at call sites (e.g., "boolean | null").
+                    if (u.options.all { it.body is TsBody.PrimitiveBody }) return
+                    val alias = baseAliasName(name)
+                    if (!emitted.add(alias)) return
+                    // Before emitting the union, emit any referenced complex types used by options (from tsFields)
+                    val needed = linkedSetOf<TsType>()
+                    u.options.forEach { opt ->
+                        val body = opt.body
+                        if (body is TsBody.ObjectBody) {
+                            // Scan tsFields for primitive references that are actually complex aliases
+                            body.tsFields.forEach { f ->
+                                val prim = f.type.body as? TsBody.PrimitiveBody
+                                if (prim != null) {
+                                    val match = typesByAlias[prim.tsName]
+                                    if (match != null) {
+                                        needed += match
+                                        // Also include intersected interfaces of the matched type
+                                        match.intersects.forEach { interName ->
+                                            typesByAlias[baseAliasName(interName)]?.let { needed += it }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    needed.forEach { refType -> emitObjectAlias(refType) }
+                    // Emit each option alias when it's an object (ensures intersects/types exist first)
+                    u.options.forEach { opt -> if (opt.body is TsBody.ObjectBody) emitObjectAlias(opt) }
+                    // Emit the union alias
+                    appendDocComment(tsLines, jvm)
+                    val rendered = u.options.joinToString(" | ") { opt -> baseAliasName(opt.typeScriptTypeName) }
+                    tsLines += "type $alias = $rendered"
+                    tsLines += ""
+                }
+
+                // Emit request type aliases first (including generic instantiations that reference base aliases)
+                api.apiMethods.forEach { m ->
+                    val req = m.requestBodyType
+                    when (val b = req?.body) {
+                        is TsBody.ObjectBody -> emitObjectAlias(req)
+                        is TsBody.PrimitiveBody -> {
+                            // If the primitive name corresponds to a known alias (possibly generic instantiation), emit base alias
+                            val base = baseAliasName(req.typeScriptTypeName)
+                            typesByAlias[base]?.let { emitObjectAlias(it) }
+                        }
+                        else -> {}
+                    }
+                }
+                // Emit unions and their referenced types
+                api.apiMethods.forEach { m ->
+                    val res = m.responseBodyType
+                    when (val body = res?.body) {
+                        is TsBody.UnionBody -> emitUnionAlias(res.typeScriptTypeName, res.jvmQualifiedClassName, body)
+                        is TsBody.ObjectBody -> emitObjectAlias(res)
+                        else -> {}
+                    }
+                }
+                // Emit any remaining types belonging to this API (same simple class prefix) that haven't been emitted yet
+                val prefix = api.cls
+                extraction.types
+                    .filter { !emitted.contains(baseAliasName(it.typeScriptTypeName)) }
+                    .filter { baseAliasName(it.typeScriptTypeName).startsWith(prefix) || (it.jvmQualifiedClassName.substringAfterLast('.').substringBefore('$') == prefix) }
+                    .forEach { emitObjectAlias(it) }
+            }
+        }
+        while (tsLines.isNotEmpty() && tsLines.last().isBlank()) tsLines.removeLast()
+        return tsLines.joinToString("\n")
+    }
+
+    private fun renderTypeName(t: TsType): String = t.typeScriptTypeName
+
+    private fun appendDocComment(target: MutableList<String>, jvmFqn: String?) {
+        if (jvmFqn == null) return
+        target += "/**"
+        target += " * JVM: $jvmFqn"
+        target += " */"
+    }
+
+    private fun appendDocWithReferences(target: MutableList<String>, t: TsType) {
+        val jvmFqn = t.jvmQualifiedClassName
+        val refs = t.references
+            .map {
+                when (it) {
+                    is TsRef.ByMethod -> it.controllerJvmQualifiedMethodName
+                    is TsRef.ByType -> it.jvmQualifiedClassName
+                }
+            }
+            .distinct()
+            .sorted()
+        if (jvmFqn.isBlank() && refs.isEmpty()) return
+        target += "/**"
+        target += " * JVM: $jvmFqn"
+        if (refs.isNotEmpty()) {
+            target += " * Referenced by:"
+            refs.forEach { r -> target += " * - $r" }
+        }
+        target += " */"
+    }
+
+}

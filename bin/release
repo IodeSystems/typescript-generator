@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+gradle releaseStripSnapshotCommitAndTag && \
+  ((gradle publishMavenJavaPublicationToMavenLocal && gradle releasePublish) || gradle releaseRevert) && \
+  gradle releasePrepareNextDevelopmentIteration
