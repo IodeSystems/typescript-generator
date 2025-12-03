@@ -1,16 +1,5 @@
-repositories {
-    mavenLocal()
-    mavenCentral()
-    gradlePluginPortal()
-    maven {
-        setUrl("https://s01.oss.sonatype.org/content/repositories/releases")
-    }
-}
-
 plugins {
-    java
-    kotlin("jvm")
-    id("org.jetbrains.dokka-javadoc")
+    id("kotlin-conventions")
 }
 
 kotlin {

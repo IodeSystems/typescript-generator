@@ -46,10 +46,11 @@ data class Config(
     // If set via emitLibAsSeparateFile(), callers may choose to write library helpers to a separate file.
     // Default null means do not imply separate output.
     val emitLibFileName: String? = null,
-    // If set via emitTypesAsSeparateFiles(), types will be grouped by a logical file name derived from the
-    // provided mapping function (input is controller FQN). Default null means types are emitted inline with APIs
-    // for tsApis(), and a single combined block for ts().
-    val emitTypesFileNameMap: ((String) -> String)? = null,
+    // Group API controllers into files: map of output filename -> list of controller JVM FQNs.
+    // When provided, we will emit one API file per entry, a lib file (api-lib.ts), and a shared types file.
+    val groupApiFile: Map<String, List<String>>? = null,
+    // Types file name used when groupApiFile is set (and in future when splitting types is enabled).
+    val typesFileName: String = "api-types.ts",
 ) {
 
     val jvmExtractor: com.iodesystems.ts.extractor.JvmExtractor by lazy {
@@ -110,11 +111,11 @@ data class Config(
         fun emitLibAsSeparateFile(name: String = "api-lib.ts") =
             copy(config = config.run { copy(emitLibFileName = name) })
 
-        // Enable separate types output file mapping. The mapper receives a controller FQN and returns a filename.
-        // By default, everything goes to "types.ts".
-        fun emitTypesAsSeparateFiles(nameFileMap: (String) -> String = { _ -> "types.ts" }) = copy(config = config.run {
-            copy(emitTypesFileNameMap = nameFileMap)
+        fun groupApis(grouping: Map<String, List<String>>) = copy(config = config.run {
+            copy(groupApiFile = grouping)
         })
+
+        fun typesFileName(name: String) = copy(config = config.run { copy(typesFileName = name) })
     }
 
 }

@@ -7,14 +7,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("org.jetbrains.dokka-javadoc")
     id("io.github.gradle-nexus.publish-plugin")
-}
-
-val javadocJar: TaskProvider<Jar> by tasks.registering(Jar::class) {
-    dependsOn(tasks.dokkaGeneratePublicationJavadoc)
-    archiveClassifier.set("javadoc")
-    from(tasks.dokkaGeneratePublicationJavadoc.get().outputDirectory)
 }
 
 nexusPublishing {
@@ -28,11 +21,6 @@ nexusPublishing {
             snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
         }
     }
-}
-
-signing {
-    useGpgCmd()
-    sign(publishing.publications)
 }
 
 tasks.register("versionGet") {

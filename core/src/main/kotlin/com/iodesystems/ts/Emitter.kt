@@ -6,7 +6,7 @@ import com.iodesystems.ts.model.TsBody
 import com.iodesystems.ts.model.TsType
 import com.iodesystems.ts.model.TsRef
 
-class Emitter(private val config: com.iodesystems.ts.Config) {
+class Emitter(private val config: Config) {
 
     fun emitLib(): String = """
         export type RequestInterceptor = (input: RequestInfo, init: RequestInit) => Promise<[RequestInfo, RequestInit]> | [RequestInfo, RequestInit]
@@ -44,7 +44,7 @@ class Emitter(private val config: com.iodesystems.ts.Config) {
           return qs ? (path + "?" + qs) : path
         }
         
-        async function fetchInternal(opts: ApiOptions, path: string, init: RequestInit): Promise<Response> {
+        export async function fetchInternal(opts: ApiOptions, path: string, init: RequestInit): Promise<Response> {
           const baseUrl = opts.baseUrl ?? ""
           let input: RequestInfo = baseUrl + path
           let options: RequestInit = init
@@ -61,15 +61,117 @@ class Emitter(private val config: com.iodesystems.ts.Config) {
         }
         """.trimIndent()
 
+    // New API: emit types for a single output module. typeSource maps alias -> module path (relative, extensionless).
+    fun emitTypes(types: List<TsType>, typeSource: Map<String, String>? = null): String {
+        if (types.isEmpty()) return ""
+        val inFileAliases = types.map { baseAliasName(it.typeScriptTypeName) }.toSet()
+        val currentModule = typeSource?.let { ts ->
+            val mods = types.mapNotNull { t -> ts[baseAliasName(t.typeScriptTypeName)] }.toSet()
+            if (mods.size > 1) throw IllegalStateException("All provided types must target the same module. Found: $mods")
+            mods.firstOrNull()
+        }
+        val tsLines = mutableListOf<String>()
+        // Collect cross-file imports (aliases referenced by these types but mapped to other modules)
+        if (typeSource != null) {
+            val importsByModule = linkedMapOf<String, MutableSet<String>>()
+            fun noteImport(alias: String) {
+                val mod = typeSource[alias] ?: return
+                if (currentModule != null && mod == currentModule) return
+                importsByModule.getOrPut(mod) { linkedSetOf() } += alias
+            }
+            fun walkRefs(t: TsType?) {
+                when (val b = t?.body) {
+                    is TsBody.PrimitiveBody -> {
+                        val a = baseAliasName(b.tsName)
+                        if (!inFileAliases.contains(a)) noteImport(a)
+                    }
+                    is TsBody.ArrayBody -> walkRefs(b.element)
+                    is TsBody.ObjectBody -> {
+                        val a = baseAliasName(t.typeScriptTypeName)
+                        if (!inFileAliases.contains(a)) noteImport(a)
+                        b.tsFields.forEach { f -> walkRefs(f.type) }
+                    }
+                    is TsBody.UnionBody -> b.options.forEach { opt ->
+                        val a = baseAliasName(opt.typeScriptTypeName)
+                        if (!inFileAliases.contains(a)) noteImport(a)
+                        walkRefs(opt)
+                    }
+                    null -> {}
+                }
+            }
+            types.forEach { walkRefs(it) }
+            // Emit import headers
+            importsByModule.forEach { (mod, names) ->
+                tsLines += "import type { ${names.joinToString(", ")} } from './$mod'"
+            }
+            if (importsByModule.isNotEmpty()) tsLines += ""
+        }
+
+        val emitted = HashSet<String>()
+        // Only allow emitting types that belong to this file (if typeSource provided). Others must be imported.
+        fun canEmit(alias: String): Boolean {
+            if (typeSource == null) return true
+            val mod = typeSource[alias]
+            return mod == currentModule
+        }
+
+        fun emitObjectAlias(t: TsType) {
+            val alias = baseAliasName(t.typeScriptTypeName)
+            if (!canEmit(alias)) return
+            if (!emitted.add(alias)) return
+            // Do not force emission of intersected/external aliases; only recurse for in-file ones
+            val resolved = t
+            appendDocWithReferences(tsLines, resolved)
+            val gp = if (resolved.genericParameters.isNotEmpty()) "<" + resolved.genericParameters.joinToString(",") + ">" else ""
+            tsLines += "export type $alias$gp = {"
+            val obj = (resolved.body as TsBody.ObjectBody)
+            obj.tsFields.forEach { f ->
+                val opt = if (f.optional) "?" else ""
+                tsLines += "  ${f.name}" + opt + ": " + renderTypeName(f.type)
+            }
+            if (resolved.intersects.isNotEmpty()) {
+                val adjusted = resolved.intersects
+                tsLines += "} & " + adjusted.joinToString(" & ") { it }
+            } else {
+                tsLines += "}"
+            }
+            tsLines += ""
+        }
+
+        fun emitUnionAlias(name: String, jvm: String, u: TsBody.UnionBody) {
+            if (u.options.all { it.body is TsBody.PrimitiveBody }) return
+            val alias = baseAliasName(name)
+            if (!canEmit(alias)) return
+            if (!emitted.add(alias)) return
+            appendDocComment(tsLines, jvm)
+            val rendered = u.options.joinToString(" | ") { opt -> baseAliasName(opt.typeScriptTypeName) }
+            tsLines += "export type $alias = $rendered"
+            tsLines += ""
+        }
+
+        // Emit objects then unions
+        types.forEach { t ->
+            when (t.body) {
+                is TsBody.ObjectBody -> emitObjectAlias(t)
+                else -> {}
+            }
+        }
+        types.forEach { t ->
+            val ub = t.body as? TsBody.UnionBody ?: return@forEach
+            emitUnionAlias(t.typeScriptTypeName, t.jvmQualifiedClassName, ub)
+        }
+        return tsLines.joinToString("\n")
+    }
+
+    // New API: emit APIs for a single output module. When typeSource is null, inline types.
     fun emitApis(
+        apis: List<com.iodesystems.ts.model.ApiModel>,
         extraction: com.iodesystems.ts.model.ExtractionResult,
-        match: (String) -> Boolean = { true },
-        inlineTypes: Boolean = false
+        typeSource: Map<String, String>? = null,
     ): String {
         val tsLines = mutableListOf<String>()
-        val apis =
-            extraction.apis.filter { config.includeApi(it.jvmQualifiedClassName) && match(it.jvmQualifiedClassName) }
-        // Keep a single emitted set across all selected APIs to avoid duplicating type aliases
+        val selected = apis.filter { config.includeApi(it.jvmQualifiedClassName) }
+        // Keep a single emitted set across all selected APIs to avoid duplicating type aliases when inlining
         val emitted = HashSet<String>()
 
         fun baseAliasName(name: String): String {
@@ -79,7 +181,44 @@ class Emitter(private val config: com.iodesystems.ts.Config) {
         // Fast lookup for known complex types by TS alias
         val typesByAlias = extraction.types.associateBy { it.typeScriptTypeName }
 
-        apis.forEach { api ->
+        // If not inlining types, add import headers for lib and types
+        if (typeSource != null) {
+            // lib import
+            val libName = config.emitLibFileName ?: "api-lib.ts"
+            tsLines += "import { ApiOptions, fetchInternal, flattenQueryParams } from './${libName.removeSuffix(".ts")}'"
+            // collect used aliases and group by module
+            val importsByModule = linkedMapOf<String, MutableSet<String>>()
+            fun baseAlias(name: String): String = name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
+            fun noteAlias(alias: String) {
+                val mod = typeSource[alias] ?: return
+                importsByModule.getOrPut(mod) { linkedSetOf() } += alias
+            }
+            fun walk(t: TsType?) {
+                when (val b = t?.body) {
+                    is TsBody.PrimitiveBody -> noteAlias(baseAlias(b.tsName))
+                    is TsBody.ArrayBody -> walk(b.element)
+                    is TsBody.ObjectBody -> {
+                        noteAlias(baseAlias(t.typeScriptTypeName))
+                        b.tsFields.forEach { f -> walk(f.type) }
+                    }
+                    is TsBody.UnionBody -> b.options.forEach { opt ->
+                        noteAlias(baseAlias(opt.typeScriptTypeName)); walk(opt)
+                    }
+                    null -> {}
+                }
+            }
+            selected.forEach { api ->
+                api.apiMethods.forEach { m ->
+                    walk(m.requestBodyType); walk(m.queryParamsType); m.pathTsFields.values.forEach { f -> walk(f.type) }; walk(m.responseBodyType)
+                }
+            }
+            importsByModule.forEach { (mod, names) ->
+                tsLines += "import type { ${names.joinToString(", ")} } from './$mod'"
+            }
+            if (importsByModule.isNotEmpty()) tsLines += ""
+        }
+
+        selected.forEach { api ->
             tsLines += "export class ${api.cls} {"
             tsLines += "  constructor(private opts: ApiOptions = {}) {}"
             api.apiMethods.forEach { m ->
@@ -137,7 +276,7 @@ class Emitter(private val config: com.iodesystems.ts.Config) {
             tsLines += "}"
             tsLines += ""
 
-            if (inlineTypes) {
+            if (typeSource == null) {
                 // Emit aliases in a deterministic order similar to previous emitter
                 fun emitObjectAlias(t: TsType) {
                     val alias = baseAliasName(t.typeScriptTypeName)
@@ -279,6 +418,10 @@ class Emitter(private val config: com.iodesystems.ts.Config) {
     }
 
     private fun renderTypeName(t: TsType): String = t.typeScriptTypeName
+
+    private fun baseAliasName(name: String): String {
+        return name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
+    }
 
     private fun appendDocComment(target: MutableList<String>, jvmFqn: String?) {
         if (jvmFqn == null) return
