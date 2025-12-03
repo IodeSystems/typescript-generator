@@ -16,6 +16,7 @@ One example is an anecdote, three is maybe a pattern
 
 When developing a feature, it is not done unless a test covering it is created.
 A passing test means nothing unless you understand what the test is doing, it may be testing the wrong things.
+No assert should be without a reason message that would help an llm understand why a case failed.
 
 # Before every complex action
 
