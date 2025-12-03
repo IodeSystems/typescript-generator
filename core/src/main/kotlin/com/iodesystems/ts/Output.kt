@@ -119,7 +119,18 @@ class Output(
 
         // Emit per-group API files: emitter handles type imports from typeSource
         group.forEach { (fileName, controllerFqns) ->
-            val selectedApis = extraction.apis.filter { controllerFqns.contains(it.jvmQualifiedClassName) && config.includeApi(it.jvmQualifiedClassName) }
+            val selectedApis = extraction.apis.filter {
+                val className = it.jvmQualifiedClassName
+                controllerFqns.any { pattern ->
+                    // If pattern contains regex special characters, treat as regex
+                    if (pattern.contains(".") || pattern.contains("*") || pattern.contains("$")) {
+                        Regex(pattern).matches(className)
+                    } else {
+                        // Otherwise do exact match
+                        pattern == className
+                    }
+                } && config.includeApi(className)
+            }
             val used = collectUsedTypeAliases(controllerFqns)
             // Build a narrow typeSource for this file (only the used aliases), all pointing to the shared types module
             val localTypeSource = used.associateWith { typesImportPath }
