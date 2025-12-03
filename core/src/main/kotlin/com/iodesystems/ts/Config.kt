@@ -1,6 +1,5 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.extractor.ApiExtractor
 import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.extractor.SpringApiExtractor
 import java.time.LocalDate
@@ -35,14 +34,19 @@ data class Config(
         "jakarta.annotation.Nullable",
         "org.jetbrains.annotations.Nullable",
     ),
-    // Predicate to include or exclude discovered API controllers by their JVM FQN.
-    // Default includes all APIs.
-    val includeApi: (String) -> Boolean = { true },
-    val customNaming: (pkg: String, cls: String) -> String = { _, cls ->
-        cls
-            .replace(".", "")
-            .replace("$", "")
-    },
+    // Serializable include/exclude lists for API selection (regex strings). Empty = include all.
+    val includeApiIncludes: List<String> = emptyList(),
+    val includeApiExcludes: List<String> = emptyList(),
+    // Transient predicate override for non-serializable usage
+    @Transient val includeApiPredicate: ((String) -> Boolean)? = null,
+
+    // Regex-based type name replacements. Keys are regex, values are replacement (supports capture groups).
+    // Applied to the simple class name to produce the TypeScript alias.
+    val typeNameReplacements: Map<String, String> = mapOf(
+        "[.$]" to ""
+    ),
+    // Transient override for custom naming if callers want a function; takes only cls (pkg arg removed)
+    @Transient val customNamingFunction: ((cls: String) -> String)? = null,
     // If set via emitLibAsSeparateFile(), callers may choose to write library helpers to a separate file.
     // Default null means do not imply separate output.
     val emitLibFileName: String? = null,
@@ -51,18 +55,35 @@ data class Config(
     val groupApiFile: Map<String, List<String>>? = null,
     // Types file name used when groupApiFile is set (and in future when splitting types is enabled).
     val typesFileName: String = "api-types.ts",
+    // Map of external TypeScript type simple name -> module specifier (e.g., "Dayjs" -> "dayjs").
+    // These will be imported using `import type { Name } from 'module'` wherever referenced.
+    val externalImportType: Map<String, String> = emptyMap(),
+    // Map of external TypeScript type simple name -> full import line to emit as-is
+    // Example: "Dayjs" -> "import Dayjs from 'dayjs'"
+    // If present, this takes precedence over externalImportType for that name.
+    val externalImportLines: Map<String, String> = emptyMap(),
 ) {
 
-    val jvmExtractor: com.iodesystems.ts.extractor.JvmExtractor by lazy {
-        _root_ide_package_.com.iodesystems.ts.extractor.JvmExtractor(
-            this
-        )
+    fun includeApi(name: String): Boolean {
+        includeApiPredicate?.let { return it(name) }
+        val included =
+            if (includeApiIncludes.isEmpty()) true else includeApiIncludes.any { Regex(it).containsMatchIn(name) }
+        if (!included) return false
+        val excluded = includeApiExcludes.any { Regex(it).containsMatchIn(name) }
+        return !excluded
     }
-    val apiExtractor: com.iodesystems.ts.extractor.ApiExtractor by lazy {
-        _root_ide_package_.com.iodesystems.ts.extractor.SpringApiExtractor(
-            this
-        )
+
+    fun customNaming(cls: String): String {
+        customNamingFunction?.let { return it(cls) }
+        var out = cls
+        for ((pattern, repl) in typeNameReplacements) {
+            out = out.replace(Regex(pattern), repl)
+        }
+        return out
     }
+
+    fun jvmExtractor() = JvmExtractor(this)
+    fun apiExtractor() = SpringApiExtractor(this)
 
     data class Builder(
         val config: Config = Config(),
@@ -75,12 +96,8 @@ data class Config(
             copy(mappedTypes = mappedTypes + (klass.java.name to tsIdentifier))
         })
 
-        fun customNaming(
-            t: (
-                pkg: String, cls: String
-            ) -> String
-        ) = copy(config = config.run {
-            copy(customNaming = t)
+        fun customNaming(t: (cls: String) -> String) = copy(config = config.run {
+            copy(customNamingFunction = t)
         })
 
         fun basePackages(vararg pkgs: String) = copy(config = config.run {
@@ -88,7 +105,23 @@ data class Config(
         })
 
         fun includeApi(predicate: (String) -> Boolean) = copy(config = config.run {
-            copy(includeApi = predicate)
+            copy(includeApiPredicate = predicate)
+        })
+
+        fun includeApis(vararg patterns: String) = copy(config = config.run {
+            copy(includeApiIncludes = patterns.toList())
+        })
+
+        fun addIncludeApi(pattern: String) = copy(config = config.run {
+            copy(includeApiIncludes = includeApiIncludes + pattern)
+        })
+
+        fun excludeApis(vararg patterns: String) = copy(config = config.run {
+            copy(includeApiExcludes = patterns.toList())
+        })
+
+        fun addExcludeApi(pattern: String) = copy(config = config.run {
+            copy(includeApiExcludes = includeApiExcludes + pattern)
         })
 
         fun optionalAnnotations(vararg fqns: String) = copy(config = config.run {
@@ -116,6 +149,30 @@ data class Config(
         })
 
         fun typesFileName(name: String) = copy(config = config.run { copy(typesFileName = name) })
+
+        fun typeNameReplacements(mapping: Map<String, String>) = copy(config = config.run {
+            copy(typeNameReplacements = mapping)
+        })
+
+        fun addTypeNameReplacement(pattern: String, replacement: String) = copy(config = config.run {
+            copy(typeNameReplacements = typeNameReplacements + (pattern to replacement))
+        })
+
+        fun externalImportType(mapping: Map<String, String>) = copy(config = config.run {
+            copy(externalImportType = mapping)
+        })
+
+        fun addExternalImportType(name: String, module: String) = copy(config = config.run {
+            copy(externalImportType = externalImportType + (name to module))
+        })
+
+        fun externalImportLines(mapping: Map<String, String>) = copy(config = config.run {
+            copy(externalImportLines = mapping)
+        })
+
+        fun addExternalImportLine(name: String, importLine: String) = copy(config = config.run {
+            copy(externalImportLines = externalImportLines + (name to importLine))
+        })
     }
 
 }

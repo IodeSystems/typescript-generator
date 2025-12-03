@@ -92,9 +92,6 @@ class TypeScriptGeneratorTest {
         }
             .generate()
 
-        output.write()
-
-
         val expected = $$"""
              export class TestApi {
                constructor(private opts: ApiOptions = {}) {}

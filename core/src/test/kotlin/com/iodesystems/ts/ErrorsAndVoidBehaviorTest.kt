@@ -55,7 +55,7 @@ class ErrorsAndVoidBehaviorTest {
             TypeScriptGenerator.build {
                 it
                     .includeApi { name -> name.endsWith("CollisionControllerA") || name.endsWith("CollisionControllerB") }
-                    .customNaming { _, _ -> "Fixed" }
+                    .customNaming { _ -> "Fixed" }
             }.generate()
         }
         assertTrue(ex.message!!.contains("Type alias name collision"))

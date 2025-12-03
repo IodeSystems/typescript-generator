@@ -8,9 +8,16 @@ import com.iodesystems.ts.model.TsRef
 
 class Emitter(private val config: Config) {
 
+    private fun quotePropIfNeeded(name: String): String {
+        // Valid TypeScript identifier or property name without quoting
+        // Allow '@' in property names to match project expectations (e.g., @type)
+        val ident = Regex("^[A-Za-z_@$][A-Za-z0-9_@$]*$")
+        return if (ident.matches(name)) name else "\"" + name.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    }
+
     fun emitLib(): String = """
         export type RequestInterceptor = (input: RequestInfo, init: RequestInit) => Promise<[RequestInfo, RequestInit]> | [RequestInfo, RequestInit]
-        export type ResponseInterceptor = (response: Response) => Promise<Response> | Response
+        export type ResponseInterceptor = (response: Promise<Response>) => Promise<Response>
         export type ApiOptions = {
           baseUrl?: string
           requestInterceptor?: RequestInterceptor
@@ -53,11 +60,12 @@ class Emitter(private val config: Config) {
             input = out[0]; options = out[1]
           }
           const f = opts.fetchImpl ?? fetch
-          let res = await f(input, options)
+          const res = f(input, options)
           if (opts.responseInterceptor) {
-            res = await opts.responseInterceptor(res)
+            return opts.responseInterceptor(res)
+          } else {
+            return res
           }
-          return res
         }
         """.trimIndent()
 
@@ -74,26 +82,65 @@ class Emitter(private val config: Config) {
         // Collect cross-file imports (aliases referenced by these types but mapped to other modules)
         if (typeSource != null) {
             val importsByModule = linkedMapOf<String, MutableSet<String>>()
+            val externalImports = linkedMapOf<String, MutableSet<String>>()
+            val explicitImportLines = linkedSetOf<String>()
             fun noteImport(alias: String) {
                 val mod = typeSource[alias] ?: return
                 if (currentModule != null && mod == currentModule) return
                 importsByModule.getOrPut(mod) { linkedSetOf() } += alias
+                // If alias is mapped to an external module as well, that takes precedence for import location
+                val explicit = config.externalImportLines[alias]
+                if (explicit != null) {
+                    explicitImportLines += explicit
+                    importsByModule[mod]?.remove(alias)
+                } else {
+                    config.externalImportType[alias]?.let { extMod ->
+                        externalImports.getOrPut(extMod) { linkedSetOf() } += alias
+                        // And remove from local module import set if present
+                        importsByModule[mod]?.remove(alias)
+                    }
+                }
             }
             fun walkRefs(t: TsType?) {
                 when (val b = t?.body) {
                     is TsBody.PrimitiveBody -> {
                         val a = baseAliasName(b.tsName)
-                        if (!inFileAliases.contains(a)) noteImport(a)
+                        if (!inFileAliases.contains(a)) {
+                            // Either external or cross-file
+                            val explicit = config.externalImportLines[a]
+                            if (explicit != null) {
+                                explicitImportLines += explicit
+                            } else {
+                                val ext = config.externalImportType[a]
+                                if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteImport(a)
+                            }
+                        }
                     }
                     is TsBody.ArrayBody -> walkRefs(b.element)
                     is TsBody.ObjectBody -> {
                         val a = baseAliasName(t.typeScriptTypeName)
-                        if (!inFileAliases.contains(a)) noteImport(a)
+                        if (!inFileAliases.contains(a)) {
+                            val explicit = config.externalImportLines[a]
+                            if (explicit != null) {
+                                explicitImportLines += explicit
+                            } else {
+                                val ext = config.externalImportType[a]
+                                if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteImport(a)
+                            }
+                        }
                         b.tsFields.forEach { f -> walkRefs(f.type) }
                     }
                     is TsBody.UnionBody -> b.options.forEach { opt ->
                         val a = baseAliasName(opt.typeScriptTypeName)
-                        if (!inFileAliases.contains(a)) noteImport(a)
+                        if (!inFileAliases.contains(a)) {
+                            val explicit = config.externalImportLines[a]
+                            if (explicit != null) {
+                                explicitImportLines += explicit
+                            } else {
+                                val ext = config.externalImportType[a]
+                                if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteImport(a)
+                            }
+                        }
                         walkRefs(opt)
                     }
                     null -> {}
@@ -101,6 +148,10 @@ class Emitter(private val config: Config) {
             }
             types.forEach { walkRefs(it) }
             // Emit import headers
+            explicitImportLines.forEach { line -> tsLines += line }
+            externalImports.forEach { (mod, names) ->
+                tsLines += "import type { ${names.joinToString(", ")} } from '$mod'"
+            }
             importsByModule.forEach { (mod, names) ->
                 tsLines += "import type { ${names.joinToString(", ")} } from './$mod'"
             }
@@ -127,7 +178,8 @@ class Emitter(private val config: Config) {
             val obj = (resolved.body as TsBody.ObjectBody)
             obj.tsFields.forEach { f ->
                 val opt = if (f.optional) "?" else ""
-                tsLines += "  ${f.name}" + opt + ": " + renderTypeName(f.type)
+                val pname = quotePropIfNeeded(f.name)
+                tsLines += "  ${pname}" + opt + ": " + renderTypeName(f.type)
             }
             if (resolved.intersects.isNotEmpty()) {
                 val adjusted = resolved.intersects
@@ -188,21 +240,58 @@ class Emitter(private val config: Config) {
             tsLines += "import { ApiOptions, fetchInternal, flattenQueryParams } from './${libName.removeSuffix(".ts")}'"
             // collect used aliases and group by module
             val importsByModule = linkedMapOf<String, MutableSet<String>>()
+            val externalImports = linkedMapOf<String, MutableSet<String>>()
+            val explicitImportLines = linkedSetOf<String>()
             fun baseAlias(name: String): String = name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
             fun noteAlias(alias: String) {
                 val mod = typeSource[alias] ?: return
-                importsByModule.getOrPut(mod) { linkedSetOf() } += alias
+                // external types override module mapping
+                val explicit = config.externalImportLines[alias]
+                if (explicit != null) {
+                    explicitImportLines += explicit
+                } else {
+                    val ext = config.externalImportType[alias]
+                    if (ext != null) {
+                        externalImports.getOrPut(ext) { linkedSetOf() } += alias
+                    } else {
+                        importsByModule.getOrPut(mod) { linkedSetOf() } += alias
+                    }
+                }
             }
             fun walk(t: TsType?) {
                 when (val b = t?.body) {
-                    is TsBody.PrimitiveBody -> noteAlias(baseAlias(b.tsName))
+                    is TsBody.PrimitiveBody -> {
+                        val a = baseAlias(b.tsName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteAlias(a)
+                        }
+                    }
                     is TsBody.ArrayBody -> walk(b.element)
                     is TsBody.ObjectBody -> {
-                        noteAlias(baseAlias(t.typeScriptTypeName))
+                        val a = baseAlias(t.typeScriptTypeName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteAlias(a)
+                        }
                         b.tsFields.forEach { f -> walk(f.type) }
                     }
                     is TsBody.UnionBody -> b.options.forEach { opt ->
-                        noteAlias(baseAlias(opt.typeScriptTypeName)); walk(opt)
+                        val a = baseAlias(opt.typeScriptTypeName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a else noteAlias(a)
+                        }
+                        walk(opt)
                     }
                     null -> {}
                 }
@@ -212,10 +301,68 @@ class Emitter(private val config: Config) {
                     walk(m.requestBodyType); walk(m.queryParamsType); m.pathTsFields.values.forEach { f -> walk(f.type) }; walk(m.responseBodyType)
                 }
             }
+            explicitImportLines.forEach { line -> tsLines += line }
+            externalImports.forEach { (mod, names) ->
+                tsLines += "import type { ${names.joinToString(", ")} } from '$mod'"
+            }
             importsByModule.forEach { (mod, names) ->
                 tsLines += "import type { ${names.joinToString(", ")} } from './$mod'"
             }
             if (importsByModule.isNotEmpty()) tsLines += ""
+        }
+        else {
+            // Inline mode: still need to import external types used by the APIs
+            val externalImports = linkedMapOf<String, MutableSet<String>>()
+            val explicitImportLines = linkedSetOf<String>()
+            fun baseAlias(name: String): String = name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
+            fun walk(t: TsType?) {
+                when (val b = t?.body) {
+                    is TsBody.PrimitiveBody -> {
+                        val a = baseAlias(b.tsName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a
+                        }
+                    }
+                    is TsBody.ArrayBody -> walk(b.element)
+                    is TsBody.ObjectBody -> {
+                        val a = baseAlias(t.typeScriptTypeName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a
+                        }
+                        b.tsFields.forEach { f -> walk(f.type) }
+                    }
+                    is TsBody.UnionBody -> b.options.forEach { opt ->
+                        val a = baseAlias(opt.typeScriptTypeName)
+                        val explicit = config.externalImportLines[a]
+                        if (explicit != null) {
+                            explicitImportLines += explicit
+                        } else {
+                            val ext = config.externalImportType[a]
+                            if (ext != null) externalImports.getOrPut(ext) { linkedSetOf() } += a
+                        }
+                        walk(opt)
+                    }
+                    null -> {}
+                }
+            }
+            selected.forEach { api ->
+                api.apiMethods.forEach { m ->
+                    walk(m.requestBodyType); walk(m.queryParamsType); m.pathTsFields.values.forEach { f -> walk(f.type) }; walk(m.responseBodyType)
+                }
+            }
+            explicitImportLines.forEach { line -> tsLines += line }
+            externalImports.forEach { (mod, names) ->
+                tsLines += "import type { ${names.joinToString(", ")} } from '$mod'"
+            }
+            if (externalImports.isNotEmpty()) tsLines += ""
         }
 
         selected.forEach { api ->
@@ -325,7 +472,8 @@ class Emitter(private val config: Config) {
                     val obj = (resolved.body as TsBody.ObjectBody)
                     obj.tsFields.forEach { f ->
                         val opt = if (f.optional) "?" else ""
-                        tsLines += "  ${f.name}${opt}: ${renderTypeName(f.type)}"
+                        val pname = quotePropIfNeeded(f.name)
+                        tsLines += "  ${pname}${opt}: ${renderTypeName(f.type)}"
                     }
                     if (resolved.intersects.isNotEmpty()) {
                         // Adjust intersects to include generic arguments when missing by inferring from current object's fields

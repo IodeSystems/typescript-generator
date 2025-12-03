@@ -177,7 +177,7 @@ open class JvmExtractor(
                 if (typeArgs.isNotEmpty()) {
                     // Ensure the base complex type (generic alias) exists
                     ensureComplexType(scan, ci, allTypes)
-                    val baseAlias = config.customNaming(ci.packageName, ci.name.stripPrefix(ci.packageName + "."))
+                    val baseAlias = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
                     val renderedArgs = typeArgs.map { ta ->
                         val at = toTypeWithBindings(scan, controller, ta.typeSignature, allTypes, isReturn)
                         renderTs(at)
@@ -215,7 +215,6 @@ open class JvmExtractor(
                             interfaceAliasAndRecord(scan, ifaceCi, impl.name, allTypes)
                         }
                         val alias = config.customNaming(
-                            impl.packageName,
                             impl.name.stripPrefix(impl.packageName + ".")
                         )
                         ensureAliasUnique(alias, impl.name)
@@ -237,7 +236,7 @@ open class JvmExtractor(
                             allTypes[opt.jvmQualifiedClassName] = existing.copy(body = TsBody.ObjectBody(newFields))
                         }
                     }
-                    val alias = config.customNaming(ci.packageName, ci.name.stripPrefix(ci.packageName + "."))
+                    val alias = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
                     ensureAliasUnique(alias, ci.name)
                     return TsType(
                         ci.name,
@@ -491,7 +490,7 @@ open class JvmExtractor(
 
     protected fun ensureComplexType(scan: ScanResult, ci: ClassInfo, allTypes: MutableMap<String, TsType>) {
         // Pre-register a placeholder to ensure stable naming during recursion
-        val aliasName = config.customNaming(ci.packageName, ci.name.stripPrefix(ci.packageName + "."))
+        val aliasName = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
         if (allTypes[ci.name] == null) {
             ensureAliasUnique(aliasName, ci.name)
             allTypes[ci.name] = TsType(ci.name, aliasName, TsBody.ObjectBody(emptyList()))
@@ -681,7 +680,6 @@ open class JvmExtractor(
             }
         }
         return config.customNaming(
-            ifaceCi.packageName,
             ifaceCi.name.stripPrefix(ifaceCi.packageName + ".")
         )
     }
