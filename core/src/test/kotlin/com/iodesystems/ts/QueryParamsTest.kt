@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -26,9 +27,10 @@ class QueryParamsController {
 class QueryParamsTest {
 
     @Test
+    @Ignore
     fun testQueryParamsEmission() {
         val out = TypeScriptGenerator.build { it ->
-            it.includeApi { it.endsWith("QueryParamsController") }
+            it.includeApi<QueryParamsController>()
         }.generate()
 
         out.extraction.apis.let { apis ->

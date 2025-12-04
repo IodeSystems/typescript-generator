@@ -12,6 +12,11 @@ class Scanner(private val config: Config) {
             .enableFieldInfo()
             .enableMethodInfo()
             .ignoreFieldVisibility()
+            .let { classGraph ->
+                if (config.classPathUrls.isNotEmpty()) {
+                    classGraph.overrideClasspath(config.classPathUrls)
+                } else classGraph
+            }
             .acceptPackages(*config.basePackages.toTypedArray())
             .scan()
     }

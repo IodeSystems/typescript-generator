@@ -1,6 +1,5 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.TypeScriptGenerator
 import org.junit.Assert.assertThrows
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
@@ -54,8 +53,11 @@ class ErrorsAndVoidBehaviorTest {
         val ex = assertThrows(IllegalStateException::class.java) {
             TypeScriptGenerator.build {
                 it
-                    .includeApi { name -> name.endsWith("CollisionControllerA") || name.endsWith("CollisionControllerB") }
-                    .customNaming { _ -> "Fixed" }
+                    .includeApi(
+                        CollisionControllerA::class,
+                        CollisionControllerB::class,
+                    )
+                    .addTypeNameReplacement(".*", "Fixed")
             }.generate()
         }
         assertTrue(ex.message!!.contains("Type alias name collision"))
@@ -65,7 +67,7 @@ class ErrorsAndVoidBehaviorTest {
     fun duplicateQueryParamNamesError() {
         val ex = assertThrows(IllegalStateException::class.java) {
             TypeScriptGenerator.build {
-                it.includeApi { name -> name.endsWith("DuplicateQueryParamController") }
+                it.includeApi(DuplicateQueryParamController::class)
             }.generate()
         }
         assertTrue(ex.message!!.contains("Duplicate query parameter name"))
@@ -75,7 +77,7 @@ class ErrorsAndVoidBehaviorTest {
     fun postWithoutBodyErrors() {
         val ex = assertThrows(IllegalStateException::class.java) {
             TypeScriptGenerator.build {
-                it.includeApi { name -> name.endsWith("PostWithoutBodyController") }
+                it.includeApi<PostWithoutBodyController>()
             }.generate()
         }
         assertTrue(ex.message!!.contains("must declare a @RequestBody"))
@@ -84,7 +86,7 @@ class ErrorsAndVoidBehaviorTest {
     @Test
     fun voidReturnDoesNotDecodeJson() {
         val out = TypeScriptGenerator.build {
-            it.includeApi { name -> name.endsWith("VoidReturnController") }
+            it.includeApi<VoidReturnController>()
         }.generate()
         val ts = out.tsApis()
         assertTrue(ts.contains(").then(r=>undefined as any)"), "Void return should not call r.json()\n$ts")

@@ -5,20 +5,40 @@
 package com.iodesystems.ts.extractor
 
 import io.github.classgraph.ClassInfo
+import io.github.classgraph.MethodInfo
 import kotlinx.metadata.KmClass
+import kotlinx.metadata.KmFunction
 import kotlinx.metadata.jvm.KotlinClassMetadata
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.ClassNode
 
 object KotlinMetadata {
 
-    fun Metadata.kotlinClass(): KmClass? {
-        return (KotlinClassMetadata.readLenient(this) as? KotlinClassMetadata.Class)?.kmClass
+    private val metadataCache = mutableMapOf<String, Metadata?>()
+    private val classCache = mutableMapOf<String, KmClass?>()
+
+    fun MethodInfo.kotlinMethod(): KmFunction? {
+        val kc = classInfo.kotlinClass() ?: return null
+        return kc.functions.first { f ->
+            f.valueParameters.map { it.type }
+            if (f.name != name) false
+            else true
+        }
     }
 
-    fun ClassInfo.kotlinMetadata(): Metadata? {
+    fun ClassInfo.kotlinClass(): KmClass? = classCache.getOrPut(name) {
+        val metadata = kotlinMetadata()
+        return if (metadata != null) {
+            (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
+        } else {
+            null
+        }
+    }
+
+    fun ClassInfo.kotlinMetadata(): Metadata? = metadataCache.getOrPut(name) {
         val classNode = ClassNode()
-        val classReader = this.resource.open().use {
+        val res = this.resource ?: return null
+        val classReader = res.open().use {
             ClassReader(it)
         }
 
@@ -55,9 +75,11 @@ object KotlinMetadata {
                     "d1" ->
                         @Suppress("UNCHECKED_CAST")
                         data1 = (annotationValues[i + 1] as List<String>).toTypedArray()
+
                     "d2" ->
                         @Suppress("UNCHECKED_CAST")
                         data2 = (annotationValues[i + 1] as List<String>).toTypedArray()
+
                     "xs" -> extraString = annotationValues[i + 1] as String
                     "pn" -> packageName = annotationValues[i + 1] as String
                     "xi" -> extraInt = annotationValues[i + 1] as Int

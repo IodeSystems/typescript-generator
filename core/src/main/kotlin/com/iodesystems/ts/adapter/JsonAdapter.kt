@@ -1,11 +1,11 @@
 package com.iodesystems.ts.adapter
 
-import io.github.classgraph.AnnotationInfo
-import io.github.classgraph.ClassInfo
-import io.github.classgraph.FieldInfo
-import io.github.classgraph.MethodInfo
-import io.github.classgraph.MethodParameterInfo
-import io.github.classgraph.ScanResult
+import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
+import io.github.classgraph.*
+import kotlinx.metadata.KmType
+import kotlinx.metadata.KmValueParameter
+import kotlinx.metadata.declaresDefaultValue
+import kotlinx.metadata.isNullable
 
 // Holds inspection target for a class field-like property
 sealed interface TsFieldInspection {
@@ -80,6 +80,81 @@ interface JsonAdapter {
         ctor: MethodInfo,
         param: MethodParameterInfo
     ): String? = param.name
+
+    fun isNullable(s: HierarchicalTypeSignature, k: KmType?, an: List<AnnotationInfo>): Boolean? {
+        isNullable(an)?.let { return it }
+        if (k !== null) return k.isNullable
+        return null
+    }
+
+    fun isOptional(
+        k: KmType?,
+        kvp: KmValueParameter?,
+        an: List<AnnotationInfo>
+    ): Boolean? {
+        isOptional(an)?.let { return it }
+        if (kvp != null) return kvp.declaresDefaultValue
+        return null
+    }
+
+    data class ResolvedFieldInfo(
+        val name: String,
+        val type: HierarchicalTypeSignature,
+        val optional: Boolean?,
+        val nullable: Boolean?,
+    )
+
+    fun isOptional(an: List<AnnotationInfo>): Boolean? {
+        return null
+    }
+
+    fun isNullable(an: List<AnnotationInfo>): Boolean? {
+        return if (an.any { it.name.endsWith(".Nullable") }) {
+            true
+        } else {
+            null
+        }
+    }
+
+    fun resolveFiledInfoFromField(f: FieldInfo): ResolvedFieldInfo {
+        TODO()
+    }
+
+    fun resolveFieldInfoFromGetterOrSetter(f: MethodInfo): ResolvedFieldInfo {
+        val name = if(f.name.startsWith("is")){
+            f.name[2].lowercase() + f.name.substring(3)
+        }else{
+            f.name[3].lowercase() + f.name.substring(4)
+        }
+        if (f.parameterInfo.isNotEmpty()) {
+            TODO()
+        } else {
+            return ResolvedFieldInfo(
+                name = name,
+                type = f.typeSignatureOrTypeDescriptor.resultType,
+                optional = null,
+                nullable = isNullable(f.annotationInfo)
+            )
+        }
+    }
+
+
+    fun resolveFieldInfoFromConstructorParameter(f: MethodParameterInfo): ResolvedFieldInfo {
+        val parentKClass = f.methodInfo.classInfo.kotlinClass()
+        val optional = if (parentKClass != null) {
+            val ctor = parentKClass.constructors.first()
+            val paramIndex = f.methodInfo.parameterInfo.indexOfFirst { it == f }
+            ctor.valueParameters[paramIndex].declaresDefaultValue
+        } else {
+            false
+        }
+        return ResolvedFieldInfo(
+            name = f.name,
+            type = f.typeSignatureOrTypeDescriptor,
+            optional = optional,
+            nullable = isNullable(f.annotationInfo)
+        )
+    }
 }
 
 

@@ -1,7 +1,6 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.TypeScriptGenerator
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -59,12 +58,10 @@ class DeduplicatedTypesAcrossControllersTest {
     fun typesAreRenderedOnlyOnceAcrossControllers() {
         val out = TypeScriptGenerator.build { cfg ->
             cfg.basePackages(javaClass.packageName)
-                .includeApi {
-                    listOf(
-                        AController::class.java.name,
-                        BController::class.java.name,
-                    ).contains(it)
-                }
+                .includeApi(
+                    AController::class,
+                    BController::class,
+                )
         }.generate()
 
         val ts = out.tsApis()

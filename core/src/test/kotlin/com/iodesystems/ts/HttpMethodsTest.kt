@@ -30,7 +30,7 @@ class HttpMethodsTest {
     @Test
     fun testHttpMethods() {
         val out = TypeScriptGenerator.build {
-            it.includeApi { it.endsWith("HttpMethods") }
+            it.includeApi<HttpMethods>()
         }.generate()
 
         out.extraction.apis.let { apis ->

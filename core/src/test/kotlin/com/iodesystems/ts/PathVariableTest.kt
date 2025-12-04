@@ -29,7 +29,7 @@ class PathVariableTest {
     @Test
     fun testPathVariableEmission() {
         val out = TypeScriptGenerator.build { it ->
-            it.includeApi { it.endsWith("PathVarController") }
+            it.includeApi<PathVarController>()
         }.generate()
 
         val expected = """

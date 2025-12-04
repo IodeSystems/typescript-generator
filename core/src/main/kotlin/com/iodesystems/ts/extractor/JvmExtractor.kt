@@ -5,14 +5,10 @@ import com.iodesystems.ts.adapter.JacksonJsonAdapter
 import com.iodesystems.ts.adapter.JsonAdapter
 import com.iodesystems.ts.adapter.TsFieldInspection
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
-import com.iodesystems.ts.extractor.KotlinMetadata.kotlinMetadata
 import com.iodesystems.ts.extractor.registry.ApiRegistry
 import com.iodesystems.ts.lib.Strings.stripPrefix
-import com.iodesystems.ts.model.ExtractionResult
-import com.iodesystems.ts.model.TsBody
-import com.iodesystems.ts.model.TsField
+import com.iodesystems.ts.model.*
 import com.iodesystems.ts.model.TsRef.ByType
-import com.iodesystems.ts.model.TsType
 import io.github.classgraph.*
 import kotlinx.metadata.KmClassifier
 import kotlinx.metadata.KmType
@@ -30,6 +26,8 @@ import kotlin.IllegalStateException
 import kotlin.Pair
 import kotlin.String
 import kotlin.Throwable
+import kotlin.also
+import kotlin.error
 import kotlin.let
 import kotlin.run
 import kotlin.to
@@ -74,7 +72,7 @@ open class JvmExtractor(
     ): TsType {
         val key = (sig?.toString() ?: "<null>") + "|return=" + isReturn
         tsCache[key]?.let { return it }
-        val t = toType(scan, controller, sig, allTypes, isReturn)
+        val t = toType(scan, controller, sig, allTypes)
         tsCache[key] = t
         return t
     }
@@ -84,8 +82,7 @@ open class JvmExtractor(
         scan: ScanResult,
         controller: ClassInfo?,
         sig: TypeSignature?,
-        allTypes: MutableMap<String, TsType>,
-        isReturn: Boolean = false
+        allTypes: MutableMap<String, TsType>
     ): TsType {
         sig ?: return primitive("any")
         return when (sig) {
@@ -102,7 +99,7 @@ open class JvmExtractor(
                 TsType("kotlin.Array", "${renderTs(elem)}[]", TsBody.ArrayBody(elem))
             }
 
-            is ClassRefTypeSignature -> classRefToType(scan, controller, sig, allTypes, isReturn)
+            is ClassRefTypeSignature -> classRefToType(scan, controller, sig, allTypes)
             is TypeVariableSignature -> primitive(sig.name)
             else -> primitive("any")
         }
@@ -112,19 +109,15 @@ open class JvmExtractor(
         scan: ScanResult,
         controller: ClassInfo?,
         sig: ClassRefTypeSignature,
-        allTypes: MutableMap<String, TsType>,
-        isReturn: Boolean = false
+        allTypes: MutableMap<String, TsType>
     ): TsType {
         val fqn = sig.fullyQualifiedClassName
         config.mappedTypes[fqn]?.let { return primitive(it) }
         return when (fqn) {
             // Map Unit/Void to void for return types
-            "kotlin.Unit" -> if (isReturn) primitive("void") else primitive("any")
+            "kotlin.Unit" -> primitive("void")
             Void::class.java.name -> primitive("void")
-            java.lang.Boolean::class.java.name -> if (isReturn) union(
-                primitive("boolean"),
-                primitive("null")
-            ) else primitive("boolean")
+            java.lang.Boolean::class.java.name -> primitive("boolean")
 
             Byte::class.java.name,
             Short::class.java.name,
@@ -141,8 +134,6 @@ open class JvmExtractor(
             CharSequence::class.java.name -> primitive("string")
 
             else -> {
-                if (isReturn && fqn == java.lang.Boolean::class.java.name) return primitive("boolean")
-
                 // Mapped generics for collections and maps
                 val targs = sig.typeArguments ?: emptyList()
                 when (fqn) {
@@ -167,24 +158,52 @@ open class JvmExtractor(
 
                 // Complex type: object/record or polymorphic union (response or request)
                 val ci = scan.getClassInfo(fqn) ?: return primitive(fqn.substringAfterLast('.'))
+
+                val intersects = ci.typeSignature?.superinterfaceSignatures?.map { signature ->
+                    classRefToType(
+                        scan,
+                        controller = controller,
+                        sig = signature,
+                        allTypes = allTypes,
+                    ).also { allTypes[it.jvmQualifiedClassName] = it }
+                } ?: emptyList()
                 // Enums serialize to a union of string literal names (adapter may customize)
                 if (ci.isEnum) {
                     val enumTs = jsonAdapter.enumSerializedTypeOrNull(ci.name, ci.enumConstants.map { it.name })
                     return primitive(enumTs)
                 }
                 // Parameterized class instantiation handling: return an instantiated reference
-                val typeArgs = sig.typeArguments ?: emptyList()
+                val typeArgs = sig.typeArguments
                 if (typeArgs.isNotEmpty()) {
-                    // Ensure the base complex type (generic alias) exists
                     ensureComplexType(scan, ci, allTypes)
                     val baseAlias = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
                     val renderedArgs = typeArgs.map { ta ->
-                        val at = toTypeWithBindings(scan, controller, ta.typeSignature, allTypes, isReturn)
+                        val at = toTypeWithBindings(scan, controller, ta.typeSignature, allTypes)
                         renderTs(at)
                     }
                     val tsName = baseAlias + "<" + renderedArgs.joinToString(", ") + ">"
                     return TsType(ci.name, tsName, TsBody.PrimitiveBody(tsName))
                 }
+
+                // Parameterized extension handling:
+                sig.suffixTypeArguments.let { suffixList ->
+                    if (suffixList.isNotEmpty()) {
+                        if (suffixList.size > 1) {
+                            error("What on earth does this mean?")
+                        }
+                        ensureComplexType(scan, ci, allTypes)
+                        val suffixes = suffixList.first()
+                        val baseAlias = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
+                        val renderedArgs = suffixes.map { ta ->
+                            val at = toTypeWithBindings(scan, controller, ta.typeSignature, allTypes)
+                            renderTs(at)
+                        }
+                        val tsName = baseAlias + "<" + renderedArgs.joinToString(", ") + ">"
+                        return TsType(ci.name, tsName, TsBody.PrimitiveBody(tsName))
+                    }
+                }
+
+
                 // Polymorphic unions via adapter-provided discriminated subtypes
                 // (Applicable for both returns and inputs if configured)
                 val resolved = jsonAdapter.resolveDiscriminatedSubTypes(scan, ci)
@@ -208,21 +227,16 @@ open class JvmExtractor(
                         }
                         optionTsFields.addAll(restTsFields)
 
-                        // Collect implemented interfaces (excluding the polymorphic base itself)
-                        val ifaceAliases = impl.interfaces.mapNotNull { ifaceRef ->
-                            val ifaceCi = scan.getClassInfo(ifaceRef.name)
-                            if (ifaceCi == null || ifaceCi.name == ci.name) return@mapNotNull null
-                            interfaceAliasAndRecord(scan, ifaceCi, impl.name, allTypes)
-                        }
                         val alias = config.customNaming(
                             impl.name.stripPrefix(impl.packageName + ".")
                         )
                         ensureAliasUnique(alias, impl.name)
+
                         TsType(
                             impl.name,
                             alias,
                             TsBody.ObjectBody(optionTsFields),
-                            intersects = ifaceAliases,
+                            intersects = intersects
                         )
                     }
                     // Register option types so they are emitted as separate definitions
@@ -238,13 +252,20 @@ open class JvmExtractor(
                     }
                     val alias = config.customNaming(ci.name.stripPrefix(ci.packageName + "."))
                     ensureAliasUnique(alias, ci.name)
-                    return TsType(
+                    val parent = TsType(
                         ci.name,
                         alias,
                         TsBody.UnionBody(options),
                         references = emptyList(),
-                        intersects = emptyList(),
+                        intersects = intersects,
+                        genericParameters = emptyList(),
                     )
+                    // Ensure the union parent (sealed type/interface) itself is present in the extracted types
+                    // so that emitters can generate a named alias for it.
+                    if (allTypes[ci.name] == null) {
+                        allTypes[ci.name] = parent
+                    }
+                    return parent
                 }
 
                 // Regular object type: build and register via ensureComplexType, then return the registered type
@@ -260,18 +281,17 @@ open class JvmExtractor(
         controller: ClassInfo?,
         sig: TypeSignature?,
         allTypes: MutableMap<String, TsType>,
-        isReturn: Boolean = false,
         bindings: Map<String, TsType> = emptyMap(),
     ): TsType {
         sig ?: return primitive("any")
         return when (sig) {
-            is BaseTypeSignature -> toType(scan, controller, sig, allTypes, isReturn)
+            is BaseTypeSignature -> toType(scan, controller, sig, allTypes)
             is ArrayTypeSignature -> {
-                val elem = toTypeWithBindings(scan, controller, sig.elementTypeSignature, allTypes, isReturn, bindings)
+                val elem = toTypeWithBindings(scan, controller, sig.elementTypeSignature, allTypes, bindings)
                 TsType("kotlin.Array", "${renderTs(elem)}[]", TsBody.ArrayBody(elem))
             }
 
-            is ClassRefTypeSignature -> classRefToType(scan, controller, sig, allTypes, isReturn)
+            is ClassRefTypeSignature -> classRefToType(scan, controller, sig, allTypes)
             is TypeVariableSignature -> {
                 // Use bound concrete type if available; otherwise render as the type variable name itself (e.g., T)
                 bindings[sig.name] ?: primitive(sig.name)
@@ -298,7 +318,7 @@ open class JvmExtractor(
         val ctorParamNames: Set<String> = ctorParamAnnsByName.keys
         // Collect Kotlin-declared property names for this class (to avoid picking up interface default getters)
         val kotlinPropertyNames: Set<String> = try {
-            classInfo.kotlinMetadata()?.kotlinClass()?.properties?.map { it.name }?.toSet() ?: emptySet()
+            classInfo.kotlinClass()?.properties?.map { it.name }?.toSet() ?: emptySet()
         } catch (_: Throwable) {
             emptySet()
         }
@@ -453,7 +473,7 @@ open class JvmExtractor(
                 return@let annsByName
             } ?: run {
                 // 2) If the adapter didn’t choose, fall back to Kotlin metadata when available
-                val km = classInfo.kotlinMetadata()?.kotlinClass()
+                val km = classInfo.kotlinClass()
                 if (km != null) {
                     // Choose the constructor with the largest number of value parameters (primary for data classes)
                     val kmCtor = km.constructors.maxByOrNull { it.valueParameters.size } ?: return@run emptyMap()
@@ -507,7 +527,7 @@ open class JvmExtractor(
             }
 
             // Create an interface alias (with possible generic args) if needed
-            val ifaceAliases: List<String> = run {
+            run {
                 val fromSignatures = try {
                     ci.typeSignature?.superinterfaceSignatures
                 } catch (_: Throwable) {
@@ -520,7 +540,7 @@ open class JvmExtractor(
                         val args = si.typeArguments ?: emptyList()
                         if (args.isNotEmpty()) {
                             val rendered = args.map { ta ->
-                                val at = toTypeWithBindings(scan, null, ta.typeSignature, allTypes, false)
+                                val at = toTypeWithBindings(scan, null, ta.typeSignature, allTypes)
                                 renderTs(at)
                             }
                             baseAlias + "<" + rendered.joinToString(", ") + ">"
@@ -532,7 +552,7 @@ open class JvmExtractor(
                 val needsKm = cgRendered.isEmpty() || cgRendered.all { !it.contains('<') }
                 if (needsKm) {
                     val km = try {
-                        ci.kotlinMetadata()?.kotlinClass()
+                        ci.kotlinClass()
                     } catch (_: Throwable) {
                         null
                     }
@@ -564,32 +584,9 @@ open class JvmExtractor(
             }
             val fields = extractFields(scan, ci, allTypes)
 
-            // If intersected interfaces are generic, but ClassGraph/KM didn't provide type args,
-            // attempt to infer them from this class's fields by matching names.
-            fun baseAliasName(n: String): String = n.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
-            val ifaceAliasesResolved: List<String> = run {
-                if (fields.isNotEmpty() && ifaceAliases.any { !it.contains('<') }) {
-                    val byNameRendered = fields.associate { (n, fl) -> n to renderTs(fl.ts) }
-                    val adjusted = mutableListOf<String>()
-                    ifaceAliases.forEach { inter ->
-                        val base = baseAliasName(inter)
-                        val ifaceType = allTypes.values.firstOrNull { it.typeScriptTypeName == base }
-                        val gp = ifaceType?.genericParameters ?: emptyList()
-                        adjusted += if (gp.isNotEmpty()) {
-                            // Order args by interface field order
-                            val ifaceFields = ((ifaceType?.body) as? TsBody.ObjectBody)?.tsFields ?: emptyList()
-                            val args = ifaceFields.mapNotNull { f -> byNameRendered[f.name] }
-                            if (args.size == ifaceFields.size && args.isNotEmpty()) {
-                                base + "<" + args.joinToString(", ") + ">"
-                            } else inter
-                        } else inter
-                    }
-                    adjusted.ifEmpty { ifaceAliases }
-                } else ifaceAliases
-            }
             val optionalParams = kotlinOptionalConstructorParams(ci)
             val hasKm = try {
-                ci.kotlinMetadata()?.kotlinClass() != null
+                ci.kotlinClass() != null
             } catch (_: Throwable) {
                 false
             }
@@ -618,7 +615,6 @@ open class JvmExtractor(
                     nullable = flags.nullable
                 )
             }
-
             val existing = allTypes[ci.name]
             if (existing == null) {
                 // Should not happen due to pre-registration, but keep a safe path
@@ -627,7 +623,14 @@ open class JvmExtractor(
                         ci.name,
                         aliasName,
                         TsBody.ObjectBody(tsFieldTypes),
-                        intersects = ifaceAliasesResolved,
+                        intersects = ci.typeSignature.superinterfaceSignatures.map { signature ->
+                            classRefToType(
+                                scan,
+                                controller = null,
+                                sig = signature,
+                                allTypes = allTypes
+                            ).also { allTypes[it.jvmQualifiedClassName] = it }
+                        },
                         genericParameters = genericParams
                     )
             } else {
@@ -639,7 +642,14 @@ open class JvmExtractor(
                 }
                 allTypes[ci.name] = existing.copy(
                     body = TsBody.ObjectBody(mergedFields),
-                    intersects = ifaceAliasesResolved,
+                    intersects = ci.typeSignature?.superinterfaceSignatures?.map { signature ->
+                        classRefToType(
+                            scan,
+                            controller = null,
+                            sig = signature,
+                            allTypes = allTypes,
+                        ).also { allTypes[it.jvmQualifiedClassName] = it }
+                    } ?: emptyList(),
                     genericParameters = genericParams
                 )
             }
@@ -691,7 +701,7 @@ open class JvmExtractor(
             return emptySet()
 
         // Load kotlin class
-        val kmClass = classInfo.kotlinMetadata()?.kotlinClass()
+        val kmClass = classInfo.kotlinClass()
         if (kmClass != null) {
             // Collect defaults from any constructor metadata to be resilient to edge cases
             return kmClass.constructors.flatMap { ctor ->
@@ -716,9 +726,9 @@ open class JvmExtractor(
             val apiMethods = apiDesc.methods.mapNotNull { mdesc ->
                 val mi = controllerInfo.methodInfo.firstOrNull { it.name == mdesc.name } ?: return@mapNotNull null
                 val http = try {
-                    com.iodesystems.ts.model.TsHttpMethod.valueOf(mdesc.http.name)
+                    TsHttpMethod.valueOf(mdesc.http.name)
                 } catch (_: Throwable) {
-                    com.iodesystems.ts.model.TsHttpMethod.GET
+                    TsHttpMethod.GET
                 }
                 val base = (apiDesc.basePath ?: "").ifBlank { "" }
                 val methodPath = mdesc.path
@@ -742,7 +752,7 @@ open class JvmExtractor(
                 // Best-effort Kotlin metadata enhancement to preserve generic args for request type
                 if (reqType != null && mdesc.bodyIndex!! >= 0) {
                     try {
-                        val kmClass = controllerInfo.kotlinMetadata()?.kotlinClass()
+                        val kmClass = controllerInfo.kotlinClass()
                         val kmFun = kmClass?.functions?.firstOrNull { it.name == mi.name }
                         if (kmFun != null && kmFun.valueParameters.size > mdesc.bodyIndex) {
                             val paramKmType = kmFun.valueParameters[mdesc.bodyIndex].type
@@ -766,7 +776,7 @@ open class JvmExtractor(
 
                 // Response type from method signature
                 val returnSig = mi.typeSignature?.resultType ?: mi.typeSignatureOrTypeDescriptor?.resultType
-                val resType = toType(scan, controllerInfo, returnSig, allTypes, isReturn = true)
+                val resType = toType(scan, controllerInfo, returnSig, allTypes)
 
                 // Build query params bag from provided params marked as Query
                 val queryFields = mdesc.params.filter { it.kind.name == "QUERY" }.mapNotNull { pd ->
@@ -807,7 +817,7 @@ open class JvmExtractor(
                     body = TsBody.ObjectBody(queryFields)
                 ) else null
 
-                com.iodesystems.ts.model.ApiMethod(
+                ApiMethod(
                     name = mi.name,
                     httpMethod = http,
                     path = fullPath,
@@ -817,8 +827,8 @@ open class JvmExtractor(
                     pathTsFields = pathFields
                 )
             }
-            com.iodesystems.ts.model.ApiModel(
-                cls = controllerInfo.simpleName,
+            ApiModel(
+                tsBaseName = controllerInfo.simpleName,
                 jvmQualifiedClassName = controllerInfo.name,
                 basePath = apiDesc.basePath ?: "",
                 apiMethods = apiMethods
@@ -848,10 +858,10 @@ open class JvmExtractor(
                     }
                 }
                 val merged = existing.references.toMutableList()
-                if (merged.filterIsInstance<com.iodesystems.ts.model.TsRef.ByMethod>()
+                if (merged.filterIsInstance<TsRef.ByMethod>()
                         .none { it.controllerJvmQualifiedMethodName == methodFqn }
                 ) {
-                    merged += com.iodesystems.ts.model.TsRef.ByMethod(methodFqn)
+                    merged += TsRef.ByMethod(methodFqn)
                     allTypes[jvm] = existing.copy(references = merged)
                 }
             }

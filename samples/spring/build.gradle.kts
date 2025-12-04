@@ -1,3 +1,5 @@
+import java.time.OffsetDateTime
+
 repositories {
     mavenLocal()
     mavenCentral()
@@ -8,11 +10,23 @@ plugins {
     id("idea")
     id("com.github.node-gradle.node")
     // In your code, you should use:
-     id("com.iodesystems.typescript-generator")
+    id("com.iodesystems.typescript-generator")
 }
 
-
-generateTypescript{
+generateTypescript {
+    emitLibFileName = "api-lib.ts"
+    typesFileName = "api-types.ts"
+    outputDirectory = "src/main/ui/gen"
+    externalImportLines.putAll(
+        mapOf(
+            "Dayjs" to "import type {Dayjs} from 'dayjs'"
+        )
+    )
+    mappedTypes.putAll(
+        mapOf(
+            OffsetDateTime::class.qualifiedName to "Dayjs",
+        )
+    )
 }
 
 idea {

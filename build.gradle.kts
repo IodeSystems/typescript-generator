@@ -20,12 +20,20 @@ private fun joinName(p: Project): String {
     }
     return name
 }
+
+tasks.publishToMavenLocal {
+    dependsOn(
+        ":core:publishToMavenLocal",
+        ":gradle-plugin:publishToMavenLocal",
+    )
+}
+
 subprojects {
     val artifactName = joinName(project)
 
     if (listOf(
             "core",
-//            "gradle-plugin"
+            // "gradle-plugin" // This is handled by the gradle-plugin-plugin
         ).contains(artifactName)
     ) {
         apply(plugin = "java")

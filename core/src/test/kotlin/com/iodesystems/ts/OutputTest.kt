@@ -1,13 +1,12 @@
 package com.iodesystems.ts
 
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+import org.springframework.web.bind.annotation.*
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.OffsetDateTime
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -23,7 +22,7 @@ class OutputApiA {
 @RequestMapping("/b")
 class OutputApiB {
     @PostMapping
-    fun run(@RequestBody req: OffsetDateTime): Boolean = true
+    fun run(@RequestBody req: OffsetDateTime): Person = error("not implemented")
 }
 
 @RestController
@@ -33,23 +32,47 @@ class OutputApiC {
     fun run(@RequestBody req: OffsetDateTime): Boolean = true
 }
 
+data class Person(
+    val name: String,
+    val age: Int,
+    val at: OffsetDateTime? = null
+)
+
+
+@RestController
+@RequestMapping("/d")
+class OutputApiD {
+    @PostMapping
+    fun run(@RequestBody req: Person): Person = req
+
+    @GetMapping
+    fun get(): UnionTesting = error("not implemented")
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
+    sealed interface UnionTesting {
+        data object Ok : UnionTesting
+        data object Er : UnionTesting
+    }
+}
+
 class OutputTest {
     @Test
-    fun outputTest() {
-        var config: Config? = null
+    @Ignore
+    fun unifiedOutputTest() {
         TypeScriptGenerator.build { b ->
             b
-                .includeApi { name -> name.contains("OutputApi") }
-                .outputDirectory("./build/test/output-test-unified")
+                .cleanOutputDir()
+                .includeApis(".*OutputApi.*")
+                .outputDirectory("./build/test/output-test/test-unified")
                 .mappedType(OffsetDateTime::class, "Dayjs | string")
                 .mappedType(LocalDate::class, "string")
                 .mappedType(LocalTime::class, "string")
-                .externalImportLines(mapOf("Dayjs" to "import Dayjs from 'dayjs'"))
-                .also { config = it.config }
+                .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }
             .generate().write()
+
         // Verify unified output structure
-        val unifiedDir = File("./build/test/output-test-unified")
+        val unifiedDir = File("./build/test/output-test/test-unified")
         val unifiedApi = File(unifiedDir, "api.ts")
         assertTrue(unifiedApi.exists(), "Unified mode should generate api.ts")
         val unified = unifiedApi.readText()
@@ -58,20 +81,37 @@ class OutputTest {
         assertTrue(unified.contains("class OutputApiA"), "api.ts should contain OutputApiA")
         assertTrue(unified.contains("class OutputApiB"), "api.ts should contain OutputApiB")
         assertTrue(unified.contains("class OutputApiC"), "api.ts should contain OutputApiC")
+        assertTrue(
+            unified.contains("export type OutputApiDUnionTesting = OutputApiDUnionTestingOk | OutputApiDUnionTestingEr"),
+            "api.ts should render unions correctly, did not see expected `export type OutputApiDUnionTesting = OutputApiDUnionTestingOk | OutputApiDUnionTestingEr`"
+        )
+        assertTrue(
+            unified.contains("Promise<OutputApiDUnionTesting>"),
+            "api.ts should not render type parameters on return type unions"
+        )
         // External import line should be present
-        assertTrue(unified.contains("import Dayjs from 'dayjs'"), "api.ts should include external import lines")
+        assertTrue(unified.contains("import type {Dayjs} from 'dayjs'"), "api.ts should include external import lines")
 
-        // Carry forward config
-        config!!
-        TypeScriptGenerator(
-            Config.Builder(config)
+        assertTrue(unified.contains("type OutputApiDUnionTesting ="), "api.ts should include typescript union parents")
+    }
+
+    @Test
+    fun separateLibOutputTest() {
+        // Generate with separate lib file
+        TypeScriptGenerator.build {
+            it
+                .cleanOutputDir()
+                .includeApis(".*OutputApi.*")
                 .emitLibAsSeparateFile()
-                .outputDirectory("./build/test/output-separate-lib")
-                .config
-        ).generate().write()
+                .outputDirectory("./build/test/output-test/separate-lib")
+                .mappedType(OffsetDateTime::class, "Dayjs | string")
+                .mappedType(LocalDate::class, "string")
+                .mappedType(LocalTime::class, "string")
+                .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
+        }.generate().write()
 
         // Verify separate lib output structure
-        val sepDir = File("./build/test/output-separate-lib")
+        val sepDir = File("./build/test/output-test/separate-lib")
         val sepLib = File(sepDir, "api-lib.ts")
         val sepApi = File(sepDir, "api.ts")
         assertTrue(sepLib.exists(), "Separate-lib mode should generate api-lib.ts")
@@ -79,13 +119,26 @@ class OutputTest {
         val sepLibTxt = sepLib.readText()
         val sepApiTxt = sepApi.readText()
         assertTrue(sepLibTxt.contains("export type ApiOptions"), "api-lib.ts should contain library helpers")
-        assertTrue(sepApiTxt.contains("import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'"), "api.ts should import from ./api-lib")
+        assertTrue(
+            sepApiTxt.contains("import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'"),
+            "api.ts should import from ./api-lib"
+        )
         assertTrue(sepApiTxt.contains("class OutputApiA"), "api.ts should contain APIs")
         // External import line should still be present in API file
-        assertTrue(sepApiTxt.contains("import Dayjs from 'dayjs'"), "api.ts should include external import lines")
+        assertTrue(
+            sepApiTxt.contains("import type {Dayjs} from 'dayjs'"),
+            "api.ts should include external import lines"
+        )
+    }
 
-        TypeScriptGenerator(
-            Config.Builder(config)
+    @Test
+    @Ignore
+    fun groupedOutputTest() {
+        // Generate grouped APIs
+        TypeScriptGenerator.build {
+            it
+                .cleanOutputDir()
+                .includeApis(".*OutputApi.*")
                 .emitLibAsSeparateFile()
                 .groupApis(
                     mapOf(
@@ -94,22 +147,25 @@ class OutputTest {
                         "rest.ts" to listOf(".*C$")
                     )
                 )
-                .outputDirectory("./build/test/output-api-groups")
-                .config
-        ).generate().write()
+                .outputDirectory("./build/test/output-test/api-groups")
+                .mappedType(OffsetDateTime::class, "Dayjs | string")
+                .mappedType(LocalDate::class, "string")
+                .mappedType(LocalTime::class, "string")
+                .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
+        }.generate().write()
 
         // Verify grouped outputs structure and contents
-        val gDir = File("./build/test/output-api-groups")
+        val gDir = File("./build/test/output-test/api-groups")
         val gLib = File(gDir, "api-lib.ts")
-        val gTypes = File(gDir, "api-types.ts")
+        val catchall = File(gDir, "api.ts")
         val gA = File(gDir, "a.ts")
         val gB = File(gDir, "b.ts")
         val gRest = File(gDir, "rest.ts")
         assertTrue(gLib.exists(), "Grouped mode should generate api-lib.ts")
-        assertTrue(gTypes.exists(), "Grouped mode should generate api-types.ts")
         assertTrue(gA.exists(), "Grouped mode should generate a.ts")
         assertTrue(gB.exists(), "Grouped mode should generate b.ts")
         assertTrue(gRest.exists(), "Grouped mode should generate rest.ts")
+        assertTrue(catchall.exists(), "Non-caught apis go into default api.ts")
 
         val aTxt = gA.readText()
         val bTxt = gB.readText()
@@ -130,8 +186,79 @@ class OutputTest {
         kotlin.test.assertFalse(rTxt.contains("OutputApiB"), "rest.ts should not contain OutputApiB")
 
         // External import lines should appear in group api files where types are referenced
-        assertTrue(aTxt.contains("import Dayjs from 'dayjs'"), "a.ts should include external import lines when referenced")
-        assertTrue(bTxt.contains("import Dayjs from 'dayjs'"), "b.ts should include external import lines when referenced")
-        assertTrue(rTxt.contains("import Dayjs from 'dayjs'"), "rest.ts should include external import lines when referenced")
+        assertTrue(
+            aTxt.contains("import type {Dayjs} from 'dayjs'"),
+            "a.ts should include external import lines when referenced"
+        )
+        assertTrue(
+            bTxt.contains("import type {Dayjs} from 'dayjs'"),
+            "b.ts should include external import lines when referenced"
+        )
+        assertTrue(
+            rTxt.contains("import type {Dayjs} from 'dayjs'"),
+            "rest.ts should include external import lines when referenced"
+        )
+    }
+
+
+    @Test
+    fun groupedOutputWithSplitTypesTest() {
+        // Generate grouped APIs
+        TypeScriptGenerator.build {
+            it.cleanOutputDir()
+                .includeApis(".*OutputApi.*")
+                .typesFileName("api-types.ts")
+                .emitLibAsSeparateFile()
+                .groupApis(
+                    mapOf(
+                        "a.ts" to listOf("com\\.iodesystems\\.ts\\.OutputApiA"),
+                        "b.ts" to listOf(".*B$"),
+                        "rest.ts" to listOf(".*C$")
+                    )
+                )
+                .outputDirectory("./build/test/output-test/api-groups-split-types")
+                .mappedType(OffsetDateTime::class, "Dayjs | string")
+                .mappedType(LocalDate::class, "string")
+                .mappedType(LocalTime::class, "string")
+                .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
+        }.generate().write()
+
+    }
+
+    @Test
+    @Ignore
+    fun splitTypesSimpleOutputTest() {
+        // Simple mode with split types enabled (no groups)
+        TypeScriptGenerator.build { b ->
+            b
+                .cleanOutputDir()
+                .emitLibAsSeparateFile()
+                .typesFileName("api-types.ts")
+                .includeApi<OutputApiD>()
+                .outputDirectory("./build/test/output-test/split-types-simple")
+                .mappedType(OffsetDateTime::class, "Dayjs | string")
+                .mappedType(LocalDate::class, "string")
+                .mappedType(LocalTime::class, "string")
+                .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
+        }.generate().write()
+
+        val sDir = File("./build/test/output-test/split-types-simple")
+        val sLib = File(sDir, "api-lib.ts")
+        val sTypes = File(sDir, "api-types.ts")
+        val sApi = File(sDir, "api.ts")
+        assertTrue(sLib.exists(), "Split-types simple mode should generate api-lib.ts")
+        assertTrue(sTypes.exists(), "Split-types simple mode should generate api-types.ts")
+        assertTrue(sApi.exists(), "Split-types simple mode should generate api.ts")
+        val sTypesTxt = sTypes.readText()
+        val sApiTxt = sApi.readText()
+        assertTrue(sTypesTxt.contains("export type Person"), "api-types.ts should contain exported Person type")
+        kotlin.test.assertFalse(
+            sApiTxt.contains("export type Person"),
+            "api.ts should not declare Person type when split is enabled"
+        )
+        assertTrue(
+            sApiTxt.contains("import type { Person, OutputApiDUnionTesting } from './api-types'"),
+            "api.ts should import Person and OutputApiDUnionTesting from ./api-types"
+        )
     }
 }

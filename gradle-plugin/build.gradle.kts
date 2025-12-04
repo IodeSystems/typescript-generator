@@ -11,6 +11,7 @@ version = rootProject.version.toString()
 
 dependencies {
     implementation(project(":core"))
+    testImplementation(kotlin("test"))
 }
 
 java {
