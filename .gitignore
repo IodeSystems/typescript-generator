@@ -2,6 +2,11 @@
 .gradle
 
 # Ignore Gradle build output directory
-build
+/core/build
+/gradle-plugin/build
+/buildSrc/build
+/buildSrc/src/main/kotlin/com/iodesystems/build
+/build
+
 .env
 node_modules
