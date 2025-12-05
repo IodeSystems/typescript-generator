@@ -9,7 +9,6 @@ plugins {
     kotlin("jvm")
     id("idea")
     id("com.github.node-gradle.node")
-    // In your code, you should use:
     id("com.iodesystems.typescript-generator")
 }
 
