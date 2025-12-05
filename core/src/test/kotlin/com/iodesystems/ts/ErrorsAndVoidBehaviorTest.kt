@@ -1,5 +1,8 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
+import com.iodesystems.ts.lib.Asserts.assertContains
 import org.junit.Assert.assertThrows
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
@@ -85,10 +88,11 @@ class ErrorsAndVoidBehaviorTest {
 
     @Test
     fun voidReturnDoesNotDecodeJson() {
-        val out = TypeScriptGenerator.build {
-            it.includeApi<VoidReturnController>()
-        }.generate()
-        val ts = out.tsApis()
-        assertTrue(ts.contains(").then(r=>undefined as any)"), "Void return should not call r.json()\n$ts")
+        val em = emitter<VoidReturnController>()
+        val content = em.ts().content()
+        content.assertContains(
+            fragment = ").then(r=>{})",
+            why = "Void return should not call r.json()"
+        )
     }
 }

@@ -7,8 +7,11 @@ package com.iodesystems.ts.extractor
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import kotlinx.metadata.KmClass
+import kotlinx.metadata.KmConstructor
 import kotlinx.metadata.KmFunction
+import kotlinx.metadata.jvm.JvmMethodSignature
 import kotlinx.metadata.jvm.KotlinClassMetadata
+import kotlinx.metadata.jvm.signature
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.ClassNode
 
@@ -16,19 +19,47 @@ object KotlinMetadata {
 
     private val metadataCache = mutableMapOf<String, Metadata?>()
     private val classCache = mutableMapOf<String, KmClass?>()
+    private val methodCache = mutableMapOf<String, KmFunction?>()
+    private val ctorCache = mutableMapOf<String, KmConstructor?>()
+
+    fun MethodInfo.kotlinConstructor(): KmConstructor? {
+        val key = "$className#$name:$typeDescriptorStr"
+        return ctorCache.getOrPut(key) {
+            val kc = classInfo.kotlinClass() ?: return@getOrPut null
+            kc.constructors.firstOrNull { c ->
+                when (val s = c.signature) {
+                    is JvmMethodSignature -> {
+                        s.descriptor == typeDescriptorStr
+                    }
+
+                    else -> false
+                }
+            }
+        }
+
+    }
 
     fun MethodInfo.kotlinMethod(): KmFunction? {
-        val kc = classInfo.kotlinClass() ?: return null
-        return kc.functions.first { f ->
-            f.valueParameters.map { it.type }
-            if (f.name != name) false
-            else true
+        val key = "$className#$name:$typeDescriptorStr"
+        return methodCache.getOrPut(key) {
+            val kc = classInfo.kotlinClass() ?: return@getOrPut null
+            kc.functions.firstOrNull { f ->
+                if (f.name != name) false
+                else when (val s = f.signature) {
+                    is JvmMethodSignature -> {
+                        s.descriptor == typeDescriptorStr
+                    }
+
+                    else -> false
+                }
+            }
         }
+
     }
 
     fun ClassInfo.kotlinClass(): KmClass? = classCache.getOrPut(name) {
         val metadata = kotlinMetadata()
-        return if (metadata != null) {
+        if (metadata != null) {
             (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
         } else {
             null
@@ -37,7 +68,7 @@ object KotlinMetadata {
 
     fun ClassInfo.kotlinMetadata(): Metadata? = metadataCache.getOrPut(name) {
         val classNode = ClassNode()
-        val res = this.resource ?: return null
+        val res = this.resource ?: return@getOrPut null
         val classReader = res.open().use {
             ClassReader(it)
         }
@@ -54,7 +85,7 @@ object KotlinMetadata {
         }
 
         if (metadataAnnotation == null) {
-            return null
+            return@getOrPut null
         }
 
         // Extract the raw fields from the annotation (JVM names are short to save space)
@@ -87,6 +118,6 @@ object KotlinMetadata {
             }
         }
 
-        return kotlinx.metadata.jvm.Metadata(kind, metadataVersion, data1, data2, extraString, packageName, extraInt)
+        kotlinx.metadata.jvm.Metadata(kind, metadataVersion, data1, data2, extraString, packageName, extraInt)
     }
 }

@@ -1,13 +1,10 @@
 package com.iodesystems.ts.adapter
 
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
+import com.iodesystems.ts.extractor.KotlinMetadata.kotlinConstructor
 import io.github.classgraph.*
-import kotlinx.metadata.KmType
-import kotlinx.metadata.KmValueParameter
-import kotlinx.metadata.declaresDefaultValue
-import kotlinx.metadata.isNullable
+import kotlinx.metadata.*
 
-// Holds inspection target for a class field-like property
 sealed interface TsFieldInspection {
     data class Field(
         val ci: ClassInfo,
@@ -40,16 +37,6 @@ interface JsonAdapter {
         }
     }
 
-    // Whether the field is considered optional/nullable by JSON rules (default: false)
-    fun isFieldNullable(
-        fieldAnnotations: List<AnnotationInfo>,
-        getterAnnotations: List<AnnotationInfo> = emptyList()
-    ): Boolean {
-        return (fieldAnnotations + getterAnnotations).firstOrNull {
-            it.classInfo.name.endsWith(".Nullable")
-        } != null
-    }
-
     // For enums, resolve how values are serialized (e.g., @JsonValue). Return null to use name().
     fun enumSerializedTypeOrNull(enumFqdn: String, enumNames: List<String>): String {
         if (enumNames.isEmpty()) return "never"
@@ -65,7 +52,25 @@ interface JsonAdapter {
 
     // Optionally allow adapter to pick a JSON constructor for Java classes.
     // Default implementation returns null (no special constructor identified).
-    fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? = null
+    fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? {
+        // Is this a kotlin class?
+        val ctors = ci.constructorInfo
+            .filter { it.isPublic && !it.isSynthetic }
+        if(ctors.isEmpty()) return null
+        if (ctors.size == 1) return ctors.first()
+        // Try to load the kotlin class, as this might be more useful
+        return ci.kotlinClass()?.let { kc ->
+            val kctors = kc.constructors.filter { ctor ->
+                !ctor.isSecondary
+            }
+            kctors.singleOrNull()?.let { kctor ->
+                val matching = ctors.first {
+                    it.kotlinConstructor() == kctor
+                }
+                matching
+            }
+        }
+    }
 
     // Optional fallback: given a property name that wasn't renamed by resolveFieldName, an adapter
     // may still derive a serialized name from constructor parameter annotations (e.g., @JsonProperty).
@@ -99,6 +104,7 @@ interface JsonAdapter {
 
     data class ResolvedFieldInfo(
         val name: String,
+        val rename: String?,
         val type: HierarchicalTypeSignature,
         val optional: Boolean?,
         val nullable: Boolean?,
@@ -121,9 +127,9 @@ interface JsonAdapter {
     }
 
     fun resolveFieldInfoFromGetterOrSetter(f: MethodInfo): ResolvedFieldInfo {
-        val name = if(f.name.startsWith("is")){
+        val name = if (f.name.startsWith("is")) {
             f.name[2].lowercase() + f.name.substring(3)
-        }else{
+        } else {
             f.name[3].lowercase() + f.name.substring(4)
         }
         if (f.parameterInfo.isNotEmpty()) {
@@ -131,6 +137,7 @@ interface JsonAdapter {
         } else {
             return ResolvedFieldInfo(
                 name = name,
+                rename = null,
                 type = f.typeSignatureOrTypeDescriptor.resultType,
                 optional = null,
                 nullable = isNullable(f.annotationInfo)
@@ -140,16 +147,13 @@ interface JsonAdapter {
 
 
     fun resolveFieldInfoFromConstructorParameter(f: MethodParameterInfo): ResolvedFieldInfo {
-        val parentKClass = f.methodInfo.classInfo.kotlinClass()
-        val optional = if (parentKClass != null) {
-            val ctor = parentKClass.constructors.first()
+        val optional = f.methodInfo.kotlinConstructor()?.let { ctor ->
             val paramIndex = f.methodInfo.parameterInfo.indexOfFirst { it == f }
             ctor.valueParameters[paramIndex].declaresDefaultValue
-        } else {
-            false
         }
         return ResolvedFieldInfo(
             name = f.name,
+            rename = null,
             type = f.typeSignatureOrTypeDescriptor,
             optional = optional,
             nullable = isNullable(f.annotationInfo)

@@ -1,12 +1,17 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
+import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.Asserts.assertEq
+import com.iodesystems.ts.lib.Asserts.assertNonNull
+import com.iodesystems.ts.lib.Asserts.assertType
+import com.iodesystems.ts.model.TsType
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import kotlin.test.Ignore
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 
 @RestController
@@ -32,51 +37,50 @@ class OptionalFields {
 class OptionalFieldsTest {
 
     @Test
-    @Ignore
     fun testOptionalFields() {
-        val out = TypeScriptGenerator.build {
-            it.includeApi<OptionalFields>()
-        }.generate()
+        val em = emitter<OptionalFields>()
+        em.extraction.types.let { types ->
 
-        out.extraction.apis.let {
-            assertEquals(1, it.size)
+            types.firstOrNull { t ->
+                t.tsName == "OptionalFieldsPing"
+            }
+                .assertNonNull("OptionalFieldsPing should be present in types")
+                .assertType<TsType.Object>("OptionalFieldsPing should be an object")
+                .let { t ->
+                    t.fields["message"]
+                        .assertNonNull("OptionalFieldsPing should have a message field")
+                        .let { f ->
+                            f.optional.assertEq(true, "message should be optional")
+                            f.nullable.assertEq(true, "message should be nullable")
+                        }
+
+                    t.fields["requiredish"]
+                        .assertNonNull("OptionalFieldsPing should have a requiredish field")
+                        .let { f ->
+                            f.optional.assertEq(true, "requiredish should be optional")
+                            f.nullable.assertEq(false, "requiredish should be nullable")
+                        }
+                }
         }
-        // typeRegistry removed in new model
 
-        out.tsApis().let {
-            assertEquals(
-                $$"""
-                 /**
-                  * JVM: com.iodesystems.ts.OptionalFields$Ping
-                  * Referenced by:
-                  * - com.iodesystems.ts.OptionalFields.ping
-                  */
-                 export type OptionalFieldsPing = {
-                   message?: string | null
-                   requiredish?: boolean
-                 }
+        val content = em.ts().content()
+        content.assertContains(
+            fragment = """
+                export type OptionalFieldsPing = {
+                  message?: string | null | undefined
+                  requiredish?: boolean | undefined
+                }
+            """.trimIndent(),
+            why = "Ping has a nullable String and a defaulted Boolean; both should be optional in TS"
+        )
 
-                 /**
-                  * JVM: com.iodesystems.ts.OptionalFields$Response
-                  * Referenced by:
-                  * - com.iodesystems.ts.OptionalFields.ping
-                  */
-                 export type OptionalFieldsResponse = {
-                   message?: string
-                 }
-
-                 export class OptionalFields {
-                   constructor(private opts: ApiOptions = {}) {}
-                   ping(req: OptionalFieldsPing): Promise<OptionalFieldsResponse> {
-                     return fetchInternal(this.opts, "/test/", {
-                       method: "POST",
-                       headers: {'Content-Type': 'application/json'},
-                       body: JSON.stringify(req)
-                     }).then(r=>r.json())
-                   }
-                 }
-                """.trimIndent(), it
-            )
-        }
+        content.assertContains(
+            fragment = """
+                export type OptionalFieldsResponse = {
+                  message?: string | undefined
+                }
+            """.trimIndent(),
+            why = "Response’s Kotlin default makes the field optional in emitted TypeScript"
+        )
     }
 }

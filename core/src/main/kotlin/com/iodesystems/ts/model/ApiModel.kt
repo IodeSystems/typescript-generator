@@ -1,16 +1,24 @@
 package com.iodesystems.ts.model
 
-// API description used by Emitter
 data class ApiModel(
     val tsBaseName: String,
     val jvmQualifiedClassName: String,
     val basePath: String,
     val apiMethods: List<ApiMethod>,
-)
-
-data class ApiModelNew(
-    val tsBaseName: String,
-    val jvmQualifiedClassName: String,
-    val basePath: String,
-    val apiMethods: List<ApiMethodNew>,
-)
+) {
+    fun typesUsed(): List<TsType> {
+        val typeUsed = mutableSetOf<TsType>()
+        fun addType(type: TsType) {
+            when (type) {
+                is TsType.Inline -> {}
+                is TsType.Object -> typeUsed.add(type)
+                is TsType.Union -> typeUsed.add(type)
+            }
+        }
+        apiMethods.forEach { method ->
+            method.requestBodyType?.let { addType(it) }
+            addType(method.responseBodyType)
+        }
+        return typeUsed.toList()
+    }
+}

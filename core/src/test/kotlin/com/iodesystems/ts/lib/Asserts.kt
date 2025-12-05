@@ -1,4 +1,4 @@
-package com.iodesystems.ts
+package com.iodesystems.ts.lib
 
 import tools.jackson.databind.ObjectMapper
 import kotlin.test.assertEquals
@@ -38,10 +38,10 @@ object Asserts {
         return this
     }
 
-    fun String.assertContains(substring: String, explanation: String) = kotlin.test.assertContains(
+    fun String.assertContains(fragment: String, why: String) = kotlin.test.assertContains(
         charSequence = this,
-        other = substring,
+        other = fragment,
         ignoreCase = false,
-        message = explanation
+        message = why
     )
 }

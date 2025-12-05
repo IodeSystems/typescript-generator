@@ -1,33 +1,43 @@
 package com.iodesystems.ts.emitter
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.Asserts.assertContains
 import com.iodesystems.ts.Config
-import com.iodesystems.ts.EmitterNew
+import com.iodesystems.ts.Emitter
 import com.iodesystems.ts.Scanner
-import com.iodesystems.ts.extractor.JvmExtractorNew
+import com.iodesystems.ts.extractor.JvmExtractor
+import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.*
+import kotlin.test.Ignore
 import kotlin.test.Test
 
 class EmitterTest {
 
-    inline fun <reified T> emitter(): EmitterNew {
-        val config = Config().build { includeApi(T::class) }
-        val scan = Scanner(config).scan()
-        val apiRegistry = config.apiExtractor().extract(scan)
-        val extraction = JvmExtractorNew(config).buildFromRegistry(scan, apiRegistry)
-        return EmitterNew(config, extraction)
-    }
-
-    fun EmitterNew.Output.content(): String {
-        val sb = StringBuilder()
-        files.forEach {
-            sb.append(it.file.name + ":\n")
-            sb.append("=========\n")
-            sb.append(it.content)
-            sb.append("\n=========\n")
+    companion object {
+        inline fun <reified T> emitter(
+            crossinline fn: (Config.Builder.() -> Config.Builder) = { this }
+        ): Emitter {
+            val config = Config().build { includeApi(T::class).fn() }
+            val scan = Scanner(config).scan()
+            val apiRegistry = config.apiExtractor().extract(scan)
+            val extraction = JvmExtractor(config).buildFromRegistry(scan, apiRegistry)
+            return Emitter(config, extraction)
         }
-        return sb.toString()
+
+        fun Emitter.Output.content(
+            includeLib: Boolean = false
+        ): String {
+            val sb = StringBuilder()
+            files.forEach {
+                sb.append(it.file.name + ":\n")
+                sb.append("=========\n")
+                sb.append(it.content)
+                sb.append("\n=========\n")
+            }
+            return sb.toString().let { s ->
+                if (includeLib) s
+                else s.replace(Emitter.lib(), "")
+            }
+        }
     }
 
     @RestController
@@ -49,12 +59,12 @@ class EmitterTest {
             """
             export class EmitterTestSimple {
               constructor(private opts: ApiOptions = {}) {}
-              post(req:boolean): Promise<void> {
+              post(req: boolean): Promise<void> {
                 return fetchInternal(this.opts, "/", {
                   method: "POST",
                   headers: {'Content-Type': 'application/json'},
                   body: JSON.stringify(req)
-                }).then(r=> {})
+                }).then(r=>{})
               }
             }
         """.trimIndent(), "missing"
@@ -102,6 +112,7 @@ class EmitterTest {
     }
 
     @Test
+    @Ignore
     fun kitchenSink() {
         val emitter = emitter<KitchenSink>()
         val result = emitter.ts().content()

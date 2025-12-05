@@ -1,57 +1,18 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.extractor.JvmExtractor
+import com.iodesystems.ts.model.ApiModel
+import com.iodesystems.ts.model.TsRef
+import com.iodesystems.ts.model.TsType
+import java.io.File
 
-import com.iodesystems.ts.model.*
+class Emitter(
+    private val config: Config,
+    val extraction: JvmExtractor.Extraction
+) {
 
-class Emitter(private val config: Config) {
-
-    // Small internal helpers to keep logic cohesive and deterministic
-    private object NameRenderer {
-        fun render(t: TsType): String =
-            // Normalize trivial empty generics sometimes coming from extraction (e.g., Foo<>)
-            t.typeScriptTypeName.replace("<>", "")
-
-        fun baseAlias(name: String): String =
-            name.substringBefore(" & ").substringBefore(" | ").substringBefore("<")
-    }
-
-    private class ImportAccumulator {
-        // explicit lines (from config)
-        val explicitLines = linkedSetOf<String>()
-
-        // module -> names
-        private val importsByModule = linkedMapOf<String, MutableSet<String>>()
-
-        fun addExplicit(line: String?) {
-            if (line != null) explicitLines += line
-        }
-
-        fun addImport(module: String, name: String) {
-            importsByModule.getOrPut(module) { linkedSetOf() }.add(name)
-        }
-
-        fun renderInto(lines: MutableList<String>) {
-            explicitLines.forEach { lines += it }
-            if (importsByModule.isEmpty()) return
-            // Stable module and name ordering for determinism
-            lines += ""
-            importsByModule
-                .toSortedMap(compareBy<String> { it })
-                .forEach { (module, names) ->
-                    val ordered = names.toList().sorted()
-                    lines += "import type { ${ordered.joinToString(", ")} } from '$module'"
-                }
-        }
-    }
-
-    private fun quotePropIfNeeded(name: String): String {
-        // Valid TypeScript identifier or property name without quoting
-        // Allow '@' in property names to match project expectations (e.g., @type)
-        val ident = Regex("^[A-Za-z_$][A-Za-z0-9_$]*$")
-        return if (ident.matches(name)) name else "\"" + name.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-    }
-
-    fun emitLib(): String = """
+    companion object Companion {
+        fun lib(): String = """
         export type RequestInterceptor = (input: RequestInfo, init: RequestInit) => Promise<[RequestInfo, RequestInit]> | [RequestInfo, RequestInit]
         export type ResponseInterceptor = (response: Promise<Response>) => Promise<Response>
         export type ApiOptions = {
@@ -105,481 +66,241 @@ class Emitter(private val config: Config) {
         }
         """.trimIndent()
 
-    fun emitTypes(types: List<TsType>, typeSource: Map<String, String> = emptyMap()): String {
-        if (types.isEmpty()) return ""
-        val inFileAliases = types.map { NameRenderer.baseAlias(it.typeScriptTypeName) }.toSet()
-        val currentModule = typeSource.let { ts ->
-            val mods = types.mapNotNull { t -> ts[NameRenderer.baseAlias(t.typeScriptTypeName)] }.toSet()
-            if (mods.size > 1) throw IllegalStateException("All provided types must target the same module. Found: $mods")
-            mods.firstOrNull()
-        }
-        val tsLines = mutableListOf<String>()
-        run {
-            val acc = ImportAccumulator()
-            fun walkRefs(t: TsType?) {
-                when (val b = t?.body) {
-                    is TsBody.PrimitiveBody -> {
-                        val a = NameRenderer.baseAlias(b.tsName)
-                        if (!inFileAliases.contains(a)) acc.addExplicit(config.externalImportLines[a])
-                    }
+        fun tsNameWithGenericsResolved(type: TsType): String {
+            val name = type.tsName
+            val generics = type.tsGenericParameters
+            if (generics.isEmpty()) return name
 
-                    is TsBody.ArrayBody -> walkRefs(b.element)
-                    is TsBody.ObjectBody -> {
-                        val a = NameRenderer.baseAlias(t.typeScriptTypeName)
-                        if (!inFileAliases.contains(a)) acc.addExplicit(config.externalImportLines[a])
-                        b.tsFields.forEach { f -> walkRefs(f.type) }
-                    }
+            val lt = name.indexOf('<')
+            val gt = name.lastIndexOf('>')
+            if (lt == -1 || gt == -1 || gt < lt) return name
 
-                    is TsBody.UnionBody -> b.options.forEach { opt ->
-                        val a = NameRenderer.baseAlias(opt.typeScriptTypeName)
-                        if (!inFileAliases.contains(a)) acc.addExplicit(config.externalImportLines[a])
-                        walkRefs(opt)
-                    }
+            val base = name.take(lt)
+            val genericSection = name.substring(lt + 1, gt)
 
-                    null -> {}
+            fun splitTopLevel(s: String): List<String> {
+                val out = mutableListOf<String>()
+                val sb = StringBuilder()
+                var depth = 0
+                for (ch in s) {
+                    when (ch) {
+                        '<' -> {
+                            depth++
+                            sb.append(ch)
+                        }
+
+                        '>' -> {
+                            depth--
+                            sb.append(ch)
+                        }
+
+                        ',' -> {
+                            if (depth == 0) {
+                                out.add(sb.toString())
+                                sb.setLength(0)
+                            } else sb.append(ch)
+                        }
+
+                        else -> sb.append(ch)
+                    }
                 }
+                if (sb.isNotEmpty()) out.add(sb.toString())
+                return out
             }
-            types.forEach { walkRefs(it) }
-            acc.renderInto(tsLines)
-        }
 
-        // Collect cross-file imports when typeSource is provided (split across files)
-        val importsByModule = linkedMapOf<String, MutableSet<String>>()
-        val externalImports = linkedMapOf<String, MutableSet<String>>()
-        // Note: explicit external import lines already handled above
-
-        // Future: populate importsByModule/externalImports as needed
-        externalImports.forEach { (mod, names) ->
-            tsLines += "import type { ${names.joinToString(", ")} } from '$mod'"
-        }
-        importsByModule.forEach { (mod, names) ->
-            tsLines += "import type { ${names.joinToString(", ")} } from './$mod'"
-        }
-        if (importsByModule.isNotEmpty()) tsLines += ""
-
-        val emitted = HashSet<String>()
-
-        // Only allow emitting types that belong to this file (if typeSource provided). Others must be imported.
-        fun canEmit(alias: String): Boolean {
-            val mod = typeSource[alias]
-            return mod == currentModule
-        }
-
-        fun emitGenerics(t: TsType): String {
-            return if (t.genericParameters.isNotEmpty()) "<" + t.genericParameters.joinToString(",") + ">" else ""
-        }
-
-        fun emitRef(t: TsType): String = NameRenderer.baseAlias(t.typeScriptTypeName) + emitGenerics(t)
-
-        fun emitObjectAlias(t: TsType) {
-            val alias = NameRenderer.baseAlias(t.typeScriptTypeName)
-            if (!canEmit(alias)) return
-            if (!emitted.add(alias)) return
-            // Do not force emission of intersected/external aliases; only recurse for in-file ones
-            val resolved = t
-            appendDocWithReferences(tsLines, resolved)
-
-            tsLines += "export type $alias${emitGenerics(resolved)} = {"
-            val obj = (resolved.body as TsBody.ObjectBody)
-            obj.tsFields.forEach { f ->
-                val opt = if (f.optional) "?" else ""
-                val pname = quotePropIfNeeded(f.name)
-                tsLines += "  $pname" + opt + ": " + renderTypeName(f.type)
+            val resolvedArgs = splitTopLevel(genericSection).map { rawArg ->
+                val arg = rawArg.trim()
+                val mapped = generics[arg]
+                if (mapped != null) {
+                    val resolved = tsNameWithGenericsResolved(mapped)
+                    if (mapped.isNullable) "$resolved | null" else resolved
+                } else arg
             }
-            if (resolved.intersects.isNotEmpty()) {
-                val adjusted = resolved.intersects.map { emitRef(it) }
-                tsLines += "} & " + adjusted.joinToString(" & ")
-            } else {
-                tsLines += "}"
-            }
-            tsLines += ""
-        }
 
-        fun emitUnionAlias(name: String, jvm: String, u: TsBody.UnionBody) {
-            if (u.options.all { it.body is TsBody.PrimitiveBody }) return
-            val alias = NameRenderer.baseAlias(name)
-            if (!canEmit(alias)) return
-            if (!emitted.add(alias)) return
-            appendDocComment(tsLines, jvm)
-            val rendered = u.options.joinToString(" | ") { opt -> NameRenderer.baseAlias(opt.typeScriptTypeName) }
-            tsLines += "export type $alias = $rendered"
-            tsLines += ""
+            return base + "<" + resolvedArgs.joinToString(",") + ">"
         }
-
-        // Emit objects then unions, deterministic alphabetical by alias
-        types
-            .filter { it.body is TsBody.ObjectBody }
-            .sortedBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-            .forEach { emitObjectAlias(it) }
-        types
-            .mapNotNull { t -> (t.body as? TsBody.UnionBody)?.let { Pair(t, it) } }
-            .sortedBy { NameRenderer.baseAlias(it.first.typeScriptTypeName) }
-            .forEach { (t, ub) -> emitUnionAlias(t.typeScriptTypeName, t.jvmQualifiedClassName, ub) }
-        return tsLines.joinToString("\n")
     }
 
-    // New API: emit APIs for a single output module. When typeSource is null, inline types.
-    fun emitApis(
-        apis: List<ApiModel>,
-        extraction: ExtractionResult,
-        typeSource: Map<String, String> = emptyMap(),
-        libModule: String? = null,
-        skipLibDeclaration: Boolean = false
-    ): String {
-        val tsLines = mutableListOf<String>()
-        val selected = apis.filter { config.includeApi(it.jvmQualifiedClassName) }
-        // Keep a single emitted set across all selected APIs to avoid duplicating type aliases when inlining
-        val emitted = HashSet<String>()
-
-        // Indexes for resolving canonical declarations
-        val typesByExactName = extraction.types.associateBy { it.typeScriptTypeName }
-        val typesByBaseName: Map<String, List<TsType>> =
-            extraction.types.groupBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-        fun resolveCanonical(base: String): TsType? {
-            val list = typesByBaseName[base] ?: return null
-            // Prefer object declarations, prefer generic object first, then non-generic, then others
-            return list.sortedWith(compareBy<TsType>({ t ->
-                when (t.body) {
-                    is TsBody.ObjectBody -> 0
-                    is TsBody.UnionBody -> 1
-                    is TsBody.PrimitiveBody -> 2
-                    is TsBody.ArrayBody -> 3
-                }
-            }, { t -> if (t.genericParameters.isNotEmpty() || t.typeScriptTypeName.contains("<")) 0 else 1 }))
-                .firstOrNull()
+    class WriteContext(
+        val file: File,
+        val content: StringBuilder = StringBuilder(),
+        val ownedTypes: MutableSet<String> = mutableSetOf(),
+        val alreadyImported: MutableSet<String> = mutableSetOf()
+    ) {
+        fun write(string: String) {
+            content.append(string)
         }
 
-        if (!skipLibDeclaration) {
-            // Import lib if requested, otherwise inline lib
-            if (libModule != null) {
-                tsLines += "import { ApiOptions, fetchInternal, flattenQueryParams } from '${libModule.removeSuffix(".ts")}'"
-            } else {
-                // Inline the library helpers at the top of the file
-                tsLines += emitLib()
-                tsLines += ""
+        fun importFrom(other: WriteContext): String {
+            return "./" + other.file.relativeTo(file.parentFile)
+        }
+    }
+
+    data class Output(
+        val files: List<WriteContext>
+    ) {
+        fun write() {
+            files.forEach {
+                if (it.file.exists()) it.file.delete()
+            }
+            files.forEach { file ->
+                file.file.writeText(file.content.toString())
+            }
+        }
+    }
+
+
+    fun ts(): Output {
+        val outputDir = File(config.outputDirectory.ifBlank { "./" })
+        val apiFileMapping = config.groupApiFile
+        val typesFile = config.typesFileName ?: if (apiFileMapping != null) "api-types.ts"
+        else null
+        val libFile = config.emitLibFileName ?: if (typesFile != null) "api-lib.ts"
+        else "api.ts"
+
+        val writeContexts = mutableMapOf<String, WriteContext>()
+        val typeLocations = mutableMapOf<String, WriteContext>()
+        val regexCache = mutableMapOf<String, Regex>()
+
+        val isLibExternal = libFile == "api-lib.ts"
+
+        fun createWriteContext(file: String): WriteContext {
+            return writeContexts.getOrPut(file) {
+                val ctx = WriteContext(outputDir.resolve(file))
+                if (!isLibExternal || file != libFile) {
+                    config.externalImportLines.forEach { (_, line) ->
+                        ctx.write(line + "\n")
+                    }
+                }
+                ctx
             }
         }
 
-        val importsByModule = linkedMapOf<String, MutableSet<String>>()
-        val explicitImportLines = linkedSetOf<String>()
-        val toInline = linkedSetOf<String>()
-        fun baseAlias(name: String): String = NameRenderer.baseAlias(name)
-
-        fun aliasWithGenerics(t: TsType): String {
-            val name = t.typeScriptTypeName
-            if (name.contains("<")) return NameRenderer.render(t)
-            return baseAlias(name) + if (t.genericParameters.isNotEmpty()) {
-                "<${t.genericParameters.joinToString(",")}>"
-            } else ""
+        fun ApiModel.writeContext(): WriteContext {
+            val file = apiFileMapping?.firstNotNullOfOrNull { (file, matches) ->
+                if (matches.any { it == jvmQualifiedClassName }) file
+                else if (matches.any { regexCache.getOrPut(it) { Regex(it) }.matches(jvmQualifiedClassName) }) file
+                else null
+            } ?: "api.ts"
+            return createWriteContext(file)
         }
 
-        val walked = HashSet<TsType>()
-        fun walk(t: TsType?) {
-            if (t == null) return
-            if (walked.contains(t)) return
-            walked += t
-            t.intersects.forEach { walk(it) }
-            when (val b = t.body) {
-                is TsBody.ArrayBody -> walk(b.element)
-                is TsBody.PrimitiveBody -> {
-                    val a = baseAlias(b.tsName)
-                    val explicit = config.externalImportLines[a]
-                    if (explicit != null) {
-                        explicitImportLines += explicit
-                    }
-                    // If this alias is provided by a local types module, collect it, else inline
-                    val mod = typeSource[a]
-                    if (mod != null) importsByModule.getOrPut(mod) { linkedSetOf() }.add(a) else toInline += a
+        fun writeContextForType(): WriteContext {
+            val file = typesFile ?: "api.ts"
+            return createWriteContext(file)
+        }
+
+        val lib = createWriteContext(libFile)
+        lib.write(lib())
+        lib.write("\n")
+
+        extraction.types.forEach { type ->
+            val o = writeContextForType()
+            o.ownedTypes.add(type.tsName)
+            typeLocations[type.tsName] = o
+            o.write("export type ${type.tsName} = ")
+            when (type) {
+                is TsType.Inline -> {
+                    TODO("Does this even happen, I don't think so, not in all the tests")
                 }
 
-                is TsBody.ObjectBody -> {
-                    val a = baseAlias(t.typeScriptTypeName)
-                    val explicit = config.externalImportLines[a]
-                    if (explicit != null) {
-                        explicitImportLines += explicit
+                is TsType.Object -> {
+                    o.write("{\n")
+                    type.discriminator?.let { (key, value) ->
+                        o.write("  \"${key}\": \"$value\"\n")
                     }
-                    // Collect object alias if sourced from types file, else inline
-                    val mod = typeSource[a]
-                    if (mod != null) importsByModule.getOrPut(mod) { linkedSetOf() }.add(a) else toInline += a
-                    b.tsFields.forEach { f -> walk(f.type) }
-                }
-
-                is TsBody.UnionBody -> {
-                    // Handle the parent union alias itself first
-                    val parentAlias = baseAlias(t.typeScriptTypeName)
-                    config.externalImportLines[parentAlias]?.let { explicitImportLines += it }
-                    val parentMod = typeSource[parentAlias]
-                    if (parentMod != null) {
-                        // Import only the parent union alias when available in types file
-                        importsByModule.getOrPut(parentMod) { linkedSetOf() }.add(parentAlias)
-                        // Do not import option aliases; they are not referenced by API signatures
-                    } else {
-                        // Inline the parent union and its option aliases when not present in typeSource
-                        toInline += parentAlias
-                        b.options.forEach { opt ->
-                            val optAlias = baseAlias(opt.typeScriptTypeName)
-                            config.externalImportLines[optAlias]?.let { explicitImportLines += it }
-                            toInline += optAlias
-                            walk(opt)
+                    type.fields.forEach { (field, type) ->
+                        o.write("  $field")
+                        if (type.optional) {
+                            o.write("?")
                         }
-                    }
-                }
-            }
-        }
-        selected.forEach { api ->
-            api.apiMethods.forEach { m ->
-                walk(m.requestBodyType)
-                walk(m.queryParamsType)
-                m.pathTsFields.values.forEach { f -> walk(f.type) }
-                walk(m.responseBodyType)
-            }
-        }
-        // When not splitting types (no typeSource), inline all object aliases referenced by extraction
-        if (typeSource.isEmpty()) {
-            extraction.types.filter { it.body is TsBody.ObjectBody }
-                .forEach { t -> toInline += NameRenderer.baseAlias(t.typeScriptTypeName) }
-        }
-        // Deterministic rendering of import lines and module imports
-        explicitImportLines.forEach { line -> tsLines += line }
-        if (importsByModule.isNotEmpty()) tsLines += ""
-        // Prefer object aliases before union aliases in import name ordering
-        val typesByBase = extraction.types.associateBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-        importsByModule.toSortedMap(compareBy { it }).forEach { (module, imports) ->
-            val ordered = imports.toList().sortedWith(compareBy({ alias ->
-                val body = typesByBase[alias]?.body
-                when (body) {
-                    is TsBody.ObjectBody -> 0
-                    is TsBody.UnionBody -> 1
-                    else -> 2
-                }
-            }, { it }))
-            tsLines += "import type { ${ordered.joinToString(", ")} } from '$module'"
-        }
-        // Prepare an inliner that will only emit aliases present in toInline
-        fun shouldInline(alias: String): Boolean = typeSource.isEmpty() || alias in toInline
-        fun emitTypeDefinition(t: TsType) {
-            val alias = NameRenderer.baseAlias(t.typeScriptTypeName)
-            if (!shouldInline(alias)) return
-            // Resolve to a canonical declaration (prefer object bodies)
-            val resolvedPre = resolveCanonical(alias) ?: t
-            // If this is just a bound generic primitive reference and we cannot resolve a canonical declaration,
-            // skip for now to allow a later canonical emission path to handle it.
-            if (resolvedPre.body is TsBody.PrimitiveBody && t.typeScriptTypeName.contains("<") && resolveCanonical(alias) == null) {
-                return
-            }
-            if (!emitted.add(alias)) return
-            // Now operate on the resolved canonical (if available)
-            val resolved = resolveCanonical(alias) ?: t
-            resolved.intersects.forEach { ref ->
-                val rAlias = NameRenderer.baseAlias(ref.typeScriptTypeName)
-                val resolvedRef = resolveCanonical(rAlias) ?: ref
-                emitTypeDefinition(resolvedRef)
-            }
-            fun emitFieldRefType(rt: TsType?) {
-                when (val b = rt?.body) {
-                    is TsBody.PrimitiveBody -> {
-                        val primAlias = NameRenderer.baseAlias(b.tsName)
-                        resolveCanonical(primAlias)?.let { emitTypeDefinition(it) }
-                    }
-
-                    is TsBody.ArrayBody -> emitFieldRefType(b.element)
-                    is TsBody.ObjectBody -> {
-                        val nestedAlias = NameRenderer.baseAlias(rt.typeScriptTypeName)
-                        val nested = resolveCanonical(nestedAlias)
-                        if (nested != null) emitTypeDefinition(nested)
-                        b.tsFields.forEach { f -> emitFieldRefType(f.type) }
-                    }
-
-                    is TsBody.UnionBody -> {
-                        b.options.forEach { opt ->
-                            if (opt.body is TsBody.ObjectBody) emitTypeDefinition(opt)
-                            emitFieldRefType(opt)
+                        o.write(": ")
+                        o.write(type.tsName)
+                        if (type.nullable) {
+                            o.write(" | null")
                         }
-                    }
-
-                    null -> {}
-                }
-            }
-            // Emit fields and refs
-            when (val b = resolved.body) {
-                is TsBody.ObjectBody -> {
-                    appendDocWithReferences(tsLines, resolved)
-                    val intersects = if (resolved.intersects.isNotEmpty()) {
-                        " & " + resolved.intersects.joinToString(" & ") {
-                            aliasWithGenerics(it)
+                        if (type.optional) {
+                            o.write(" | undefined")
                         }
-                    } else ""
-                    val typeName = if (resolved.typeScriptTypeName.contains("<")) {
-                        NameRenderer.render(resolved)
-                    } else if (resolved.genericParameters.isNotEmpty()) {
-                        resolved.typeScriptTypeName + "<" + resolved.genericParameters.joinToString(",") + ">"
-                    } else {
-                        resolved.typeScriptTypeName
+                        o.write("\n")
                     }
-                    tsLines += "type ${typeName} = {"
-                    b.tsFields.forEach { f ->
-                        val q = if (f.optional) "?" else ""
-                        tsLines += "  ${quotePropIfNeeded(f.name)}${q}: ${renderTypeName(f.type)}"
-                        emitFieldRefType(f.type)
-                    }
-                    tsLines += "}$intersects"
-                    tsLines += ""
+                    o.write("}\n")
                 }
 
-                is TsBody.UnionBody -> {
-                    val n = resolved.typeScriptTypeName
-                    appendDocWithReferences(tsLines, resolved)
-                    tsLines += "type $n = " + b.options.joinToString(" | ") { renderTypeName(it) }
-                    tsLines += ""
+                is TsType.Union -> {
+                    o.write(type.children.joinToString(" | ") { child ->
+                        child.tsName
+                    })
+                    o.write("\n")
                 }
-
-                is TsBody.PrimitiveBody -> {
-                    val leftName = resolved.typeScriptTypeName
-                    val hasGenericsOnLeft = leftName.contains("<")
-                    val base = NameRenderer.baseAlias(leftName)
-                    if (hasGenericsOnLeft) {
-                        // This is a bound generic reference like Foo<Bar>; ensure canonical Foo<A,B> is emitted
-                        resolveCanonical(base)?.let { if (it.body is TsBody.ObjectBody) emitTypeDefinition(it) }
-                        return
-                    }
-                    // Otherwise, this represents a simple alias to a primitive/external type. Emit alias.
-                    appendDocWithReferences(tsLines, resolved)
-                    val right = b.tsName
-                    val intersects = if (resolved.intersects.isNotEmpty()) {
-                        " & " + resolved.intersects.joinToString(" & ") { aliasWithGenerics(it) }
-                    } else ""
-                    tsLines += "type ${leftName} = ${right}${intersects}"
-                    tsLines += ""
-                }
-
-                else -> error("Unexpected type: $b")
             }
         }
 
-        fun emitUnionAlias(name: String, u: TsBody.UnionBody) {
-            if (!shouldInline(NameRenderer.baseAlias(name))) return
-            tsLines += "type $name = " + u.options.joinToString(" | ") { renderTypeName(it) }
-            tsLines += ""
-        }
-        // Emit API classes first (as expected by tests)
-        selected.forEach { api ->
-            tsLines += "export class ${api.tsBaseName} {"
-            tsLines += "  constructor(private opts: ApiOptions = {}) {}"
-            api.apiMethods.forEach { m ->
-                val req = m.requestBodyType
-                val query = m.queryParamsType
-                val pathFields = m.pathTsFields
-                val res = m.responseBodyType
-                val resTs = res?.let { renderTypeName(it) } ?: "void"
+        extraction.apis.map { api ->
+            val o = api.writeContext()
+            if (o != lib) o.write(
+                "import { ApiOptions, fetchInternal, flattenQueryParams } from '${
+                    o.importFrom(lib).dropLast(3)
+                }'\n"
+            )
 
-                // Build function signature in one pass: (req?, path?, query?)
-                val argParts = mutableListOf<String>()
-                if (req != null) argParts += "req: ${renderTypeName(req)}"
-                if (pathFields.isNotEmpty()) {
-                    val pathObj = pathFields.entries.joinToString(", ") { (_, field) ->
-                        val opt = if (field.optional) "?" else ""
-                        "${field.name}${opt}: ${renderTypeName(field.type)}"
+
+            val importTypes = mutableSetOf<String>()
+            extraction.typeReferences.forEach { ref ->
+                if (ref.refType != TsRef.Type.METHOD) return@forEach
+                if (!ref.fromTsBaseName.startsWith(api.tsBaseName + "#")) return@forEach
+                importTypes.add(ref.toTsBaseName)
+            }
+
+            importTypes.forEach { tsBaseName ->
+                val ctx = writeContextForType()
+                if (ctx == o) return@forEach
+                o.write("import $tsBaseName from '${o.importFrom(ctx).dropLast(3)}'\n")
+            }
+
+            o.write("export class ${api.tsBaseName} {\n")
+            o.write("  constructor(private opts: ApiOptions = {}) {}\n")
+            api.apiMethods.forEach { method ->
+                val req = method.requestBodyType
+                val res = method.responseBodyType
+                val sig = listOfNotNull(
+                    req?.let { body ->
+                        "req: " + tsNameWithGenericsResolved(body)
                     }
-                    argParts += "path: { $pathObj }"
+                ).joinToString(", ")
+                o.write("  ${method.name}($sig): Promise<${tsNameWithGenericsResolved(method.responseBodyType)}> {\n")
+                o.write("    return fetchInternal(this.opts, ")
+                if (method.queryParamsType != null) {
+                    o.write("flattenQueryParams(")
                 }
-                if (query != null) argParts += "query: ${renderTypeName(query)}"
-                val sig = "(" + argParts.joinToString(", ") + ")"
-
-                // Build path call part: apply replacements if path params exist
-                val pathExpr = if (pathFields.isEmpty()) {
-                    "\"${m.path}\""
-                } else {
-                    val rep = pathFields.entries.joinToString("") { (placeholder, field) ->
-                        ".replace(\"{${placeholder}}\", String(path.${field.name}))"
-                    }
-                    "\"${m.path}\"$rep"
+                o.write("\"${method.path}\"")
+                method.pathTsFields.forEach { repl ->
+                    o.write(".replace(\"{${repl.placeholder}}\", String(path.${repl.field}))")
                 }
-
-                val pathCallPart = if (query != null) {
-                    "flattenQueryParams(${pathExpr}, query, null)"
-                } else {
-                    pathExpr
+                if (method.queryParamsType != null) {
+                    o.write(", query, null)")
                 }
-
-                tsLines += "  ${m.name}${sig}: Promise<${resTs}> {"
-                tsLines += "    return fetchInternal(this.opts, ${pathCallPart}, {"
+                o.write(", {\n")
+                o.write("      method: \"${method.httpMethod.name}\"")
                 if (req != null) {
-                    tsLines += "      method: \"${m.httpMethod.name}\"," // method
-                    tsLines += "      headers: {'Content-Type': 'application/json'},"
-                    tsLines += "      body: JSON.stringify(req)"
+                    o.write(",\n")
+                    o.write("      headers: {'Content-Type': 'application/json'},\n")
+                    o.write("      body: JSON.stringify(req)\n")
                 } else {
-                    tsLines += "      method: \"${m.httpMethod.name}\"" // method
+                    o.write("\n")
                 }
-                tsLines += if (resTs == "void") {
-                    "    }).then(r=>undefined as any)"
+                o.write("    })")
+                if (res.tsName == "void") {
+                    o.write(".then(r=>{})\n")
                 } else {
-                    "    }).then(r=>r.json())"
+                    o.write(".then(r=>r.json())\n")
                 }
-                tsLines += "  }"
+                o.write("  }\n")
             }
-            tsLines += "}"
-            tsLines += ""
+            o.write("}\n")
         }
-        // Then inline eligible object and union aliases in deterministic order
-        // First, proactively emit any aliases we explicitly decided to inline while walking (e.g.,
-        // generic parents like PolyIContainer) to avoid losing canonical definitions due to bound refs.
-        toInline.toList().sorted().forEach { a ->
-            resolveCanonical(a)?.let { emitTypeDefinition(it) }
-        }
-        // Additionally, if canonical resolution failed for some aliases, try direct lookup in extraction types
-        // to find an object declaration to emit (addresses cases where a bound alias shadowed grouping).
-        extraction.types
-            .filter { it.body is TsBody.ObjectBody }
-            .filter { toInline.contains(NameRenderer.baseAlias(it.typeScriptTypeName)) }
-            .sortedBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-            .forEach { emitTypeDefinition(it) }
-        extraction.types
-            .filter { it.body is TsBody.ObjectBody }
-            .sortedBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-            .forEach { emitTypeDefinition(it) }
-        // Ensure intersected aliases are also emitted even if not top-level in extraction
-        extraction.types
-            .flatMap { it.intersects }
-            .sortedBy { NameRenderer.baseAlias(it.typeScriptTypeName) }
-            .forEach { emitTypeDefinition(it) }
-        extraction.types
-            .mapNotNull { t -> (t.body as? TsBody.UnionBody)?.let { Pair(t, it) } }
-            .sortedBy { NameRenderer.baseAlias(it.first.typeScriptTypeName) }
-            .forEach { (t, u) -> emitUnionAlias(t.typeScriptTypeName, u) }
-        while (tsLines.isNotEmpty() && tsLines.last().isBlank()) tsLines.removeLast()
-        return tsLines.joinToString("\n")
+        return Output(writeContexts.values.toList())
     }
 
-    private fun renderTypeName(t: TsType): String = NameRenderer.render(t)
-
-    private fun baseAliasName(name: String): String = NameRenderer.baseAlias(name)
-
-    private fun appendDocComment(target: MutableList<String>, jvmFqn: String?) {
-        if (jvmFqn == null) return
-        target += "/**"
-        target += " * JVM: $jvmFqn"
-        target += " */"
-    }
-
-    private fun appendDocWithReferences(target: MutableList<String>, t: TsType) {
-        val jvmFqn = t.jvmQualifiedClassName
-        val refs = t.references
-            .map {
-                when (it) {
-                    is TsRef.ByMethod -> it.controllerJvmQualifiedMethodName
-                    is TsRef.ByType -> it.jvmQualifiedClassName
-                }
-            }
-            .distinct()
-            .sorted()
-        if (jvmFqn.isBlank() && refs.isEmpty()) return
-        target += "/**"
-        target += " * JVM: $jvmFqn"
-        if (refs.isNotEmpty()) {
-            target += " * Referenced by:"
-            refs.forEach { r -> target += " * - $r" }
-        }
-        target += " */"
-    }
 
 }

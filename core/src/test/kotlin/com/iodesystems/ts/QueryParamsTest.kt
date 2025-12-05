@@ -1,13 +1,14 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.TypeScriptGenerator
+import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import kotlin.test.Ignore
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 data class QUser(val name: String, val age: Int)
 
@@ -29,27 +30,18 @@ class QueryParamsTest {
     @Test
     @Ignore
     fun testQueryParamsEmission() {
-        val out = TypeScriptGenerator.build { it ->
-            it.includeApi<QueryParamsController>()
-        }.generate()
-
-        out.extraction.apis.let { apis ->
-            assertEquals(1, apis.size)
-        }
-
-        val expected = """
-                export class QueryParamsController {
-                  constructor(private opts: ApiOptions = {}) {}
-                  list(query: { name?: string, minAge?: number, ids: number[], users: { name: string, age: number }[] }): Promise<string> {
-                    return fetchInternal(this.opts, flattenQueryParams("/q", query, null), {
-                      method: "GET"
-                    }).then(r=>r.json())
-                  }
+        val em = emitter<QueryParamsController>()
+        val content = em.ts().content()
+        content.assertContains(
+            fragment = """
+                list(query: { name?: string, minAge?: number, ids: number[], users: { name: string, age: number }[] }): Promise<string> {
+                  return fetchInternal(this.opts, flattenQueryParams("/q", query, null), {
+                    method: "GET"
+                  }).then(r=>r.json())
                 }
-            """.trimIndent()
+            """.trimIndent(),
+            why = "Query method should gather params into a single query object and call flattenQueryParams"
+        )
 
-        out.tsApis().let { ts ->
-            assertEquals(expected, ts)
-        }
     }
 }

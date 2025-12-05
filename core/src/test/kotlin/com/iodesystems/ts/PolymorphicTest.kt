@@ -1,12 +1,14 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
+import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import kotlin.test.Ignore
 import kotlin.test.Test
-import kotlin.test.assertTrue
 
 @RequestMapping
 @RestController
@@ -30,71 +32,49 @@ class PolymorphicTest {
     @Test
     @Ignore
     fun emitsPolymorphicBodiesReturnsAndIntermediateTypes() {
-        val out = TypeScriptGenerator.build {
-            it
-                .includeApi<Poly>()
-                .outputDirectory("./tmp")
-        }.generate()
+        val em = emitter<Poly> {
+            outputDirectory("./tmp")
+        }
+        val content = em.ts().content()
 
-        val ts = out.tsApis()
-        println("[DEBUG_LOG] PolymorphicTest ts output:\n" + ts)
-
-        // Core expectations only; ignore exact comment/reference formatting and ordering
-        assertTrue(ts.contains("post(req: PolyContainer<string>): Promise<PolyResponse>"))
-        assertTrue(
-            ts.contains("type PolyContainer<T> = {\n  value: T\n}"),
-            "Simple generic types are not outputted correctly"
+        // API method block
+        content.assertContains(
+            fragment = """
+            post(req: PolyContainer<string>): Promise<PolyResponse> {
+        """.trimIndent(),
+            why = "POST method should accept PolyContainer<string> and return PolyResponse"
         )
-        assertTrue(
-            ts.contains("type PolyIContainer<A,B> = {\n  a: A\n  b: B\n}"),
-            "Expected to find `type PolyIContainer<A,B> = {\n  a: A\n  b: B\n}`: the PolyResponse is not causing it's super type to be emitted when it should"
+
+        // Generic container type definition
+        content.assertContains(
+            fragment = """
+            type PolyContainer<T> = {
+              value: T
+            }
+        """.trimIndent(),
+            why = "Simple generic types should be emitted for request bodies"
         )
-        assertTrue(ts.contains("type PolyResponse = {\n  a: string\n  b: boolean\n} & PolyIContainer<string, boolean>"))
 
-        // Full strict expectation (final target)
-        kotlin.test.assertEquals(
-            $$"""
-                export class Poly {
-                  constructor(private opts: ApiOptions = {}) {}
-                  post(req: PolyContainer<string>): Promise<PolyResponse> {
-                    return fetchInternal(this.opts, "/", {
-                      method: "POST",
-                      headers: {'Content-Type': 'application/json'},
-                      body: JSON.stringify(req)
-                    }).then(r=>r.json())
-                  }
-                }
+        // Interface super-type
+        content.assertContains(
+            fragment = """
+            type PolyIContainer<A,B> = {
+              a: A
+              b: B
+            }
+        """.trimIndent(),
+            why = "Response's implemented interface should be emitted as a separate type"
+        )
 
-                /**
-                 * JVM: com.iodesystems.ts.Poly$Container
-                 * Referenced by:
-                 * - com.iodesystems.ts.Poly.post
-                 */
-                type PolyContainer<T> = {
-                  value: T
-                }
-
-                /**
-                 * JVM: com.iodesystems.ts.Poly$IContainer
-                 * Referenced by:
-                 * - com.iodesystems.ts.Poly$Response
-                 */
-                type PolyIContainer<A,B> = {
-                  a: A
-                  b: B
-                }
-
-                /**
-                 * JVM: com.iodesystems.ts.Poly$Response
-                 * Referenced by:
-                 * - com.iodesystems.ts.Poly.post
-                 */
-                type PolyResponse = {
-                  a: string
-                  b: boolean
-                } & PolyIContainer<string, boolean>
-            """.trimIndent(),
-            ts
+        // Response type intersection
+        content.assertContains(
+            fragment = """
+            type PolyResponse = {
+              a: string
+              b: boolean
+            } & PolyIContainer<string, boolean>
+        """.trimIndent(),
+            why = "Response should intersect its implemented interface with concrete type arguments"
         )
     }
 }

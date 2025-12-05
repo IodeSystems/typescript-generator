@@ -134,10 +134,12 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
     abstract class Task : DefaultTask(), Extension {
         @TaskAction
         fun generate() {
-            val output = TypeScriptGenerator.build {
+            TypeScriptGenerator.build {
                 Config.Builder(applyToConfig(it.config))
-            }.generate()
-            output.write()
+            }
+                .generate()
+                .write()
+
         }
     }
 

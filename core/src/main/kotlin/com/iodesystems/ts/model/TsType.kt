@@ -1,24 +1,13 @@
 package com.iodesystems.ts.model
 
-// TypeScript type descriptor produced by extraction
-data class TsType(
-    val jvmQualifiedClassName: String,
-    val typeScriptTypeName: String,
-    val body: TsBody,
-    val references: List<TsRef> = emptyList(),
-    // TypeScript intersections to append to this alias declaration (interface names, etc.)
-    val intersects: List<TsType> = emptyList(),
-    // Generic type parameter names for this alias declaration (e.g., ["T","U"]) when this TsType is a generic alias
-    val genericParameters: List<String> = emptyList(),
-)
 
-data class TsFieldNew(
+data class TsField(
     val tsName: String,
     val optional: Boolean,
     val nullable: Boolean,
 )
 
-data class TsRefNew(
+data class TsRef(
     val fromTsBaseName: String,
     val toTsBaseName: String,
     val refType: Type
@@ -29,7 +18,7 @@ data class TsRefNew(
     }
 }
 
-sealed interface TsTypeNew {
+sealed interface TsType {
     val jvmQualifiedClassName: String
     val tsName: String
     val isOptional: Boolean
@@ -57,17 +46,17 @@ sealed interface TsTypeNew {
         override val isOptional: Boolean,
         override val isNullable: Boolean,
         override val tsGenericParameters: Map<String, Inline>,
-    ) : TsTypeNew
+    ) : TsType
 
     data class Object(
         override val jvmQualifiedClassName: String,
         override val tsName: String,
         override val isOptional: Boolean,
         override val isNullable: Boolean,
-        val fields: Map<String, TsFieldNew>,
+        val fields: Map<String, TsField>,
         val discriminator: Pair<String, String>? = null,
         override val tsGenericParameters: Map<String, Inline>,
-    ) : TsTypeNew
+    ) : TsType
 
     data class Union(
         override val jvmQualifiedClassName: String,
@@ -75,8 +64,8 @@ sealed interface TsTypeNew {
         override val isOptional: Boolean,
         override val isNullable: Boolean,
         val discriminatorField: String,
-        val children: List<TsTypeNew> = emptyList(),
-    ) : TsTypeNew {
+        val children: List<TsType> = emptyList(),
+    ) : TsType {
         override val tsGenericParameters: Map<String, Inline> = emptyMap()
     }
 

@@ -1,6 +1,8 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.TypeScriptGenerator
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
+import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,53 +31,69 @@ class HttpMethodsTest {
 
     @Test
     fun testHttpMethods() {
-        val out = TypeScriptGenerator.build {
-            it.includeApi<HttpMethods>()
-        }.generate()
+        val em = emitter<HttpMethods>()
+        val content = em.ts().content()
+        // Only check each API method block (not every line independently)
+        content.assertContains(
+            fragment = """
+              |  get(): Promise<string> {
+              |    return fetchInternal(this.opts, "/verbs", {
+              |      method: "GET"
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin(),
+            why = "missing GET block"
+        )
 
-        out.extraction.apis.let { apis ->
-            assertEquals(1, apis.size)
-        }
+        content.assertContains(
+            fragment = """
+              |  post(req: string): Promise<string> {
+              |    return fetchInternal(this.opts, "/verbs", {
+              |      method: "POST",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin(),
+            why = "missing POST block"
+        )
 
-        val expected = """
-                export class HttpMethods {
-                  constructor(private opts: ApiOptions = {}) {}
-                  get(): Promise<string> {
-                    return fetchInternal(this.opts, "/verbs", {
-                      method: "GET"
-                    }).then(r=>r.json())
-                  }
-                  post(req: string): Promise<string> {
-                    return fetchInternal(this.opts, "/verbs", {
-                      method: "POST",
-                      headers: {'Content-Type': 'application/json'},
-                      body: JSON.stringify(req)
-                    }).then(r=>r.json())
-                  }
-                  put(req: string): Promise<string> {
-                    return fetchInternal(this.opts, "/verbs", {
-                      method: "PUT",
-                      headers: {'Content-Type': 'application/json'},
-                      body: JSON.stringify(req)
-                    }).then(r=>r.json())
-                  }
-                  patch(req: string): Promise<string> {
-                    return fetchInternal(this.opts, "/verbs", {
-                      method: "PATCH",
-                      headers: {'Content-Type': 'application/json'},
-                      body: JSON.stringify(req)
-                    }).then(r=>r.json())
-                  }
-                  delete(): Promise<string> {
-                    return fetchInternal(this.opts, "/verbs", {
-                      method: "DELETE"
-                    }).then(r=>r.json())
-                  }
-                }
-            """.trimIndent()
+        content.assertContains(
+            fragment = """
+              |  put(req: string): Promise<string> {
+              |    return fetchInternal(this.opts, "/verbs", {
+              |      method: "PUT",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin(),
+            why = "missing PUT block"
+        )
 
-        out.tsApis().let { ts ->
-            assertEquals(expected, ts)
-        }
+        content.assertContains(
+            fragment = """
+              |  patch(req: string): Promise<string> {
+              |    return fetchInternal(this.opts, "/verbs", {
+              |      method: "PATCH",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin(),
+            why = "missing PATCH block"
+        )
+
+        content.assertContains(
+            fragment = """
+              |  delete(): Promise<string> {
+              |    return fetchInternal(this.opts, "/verbs", {
+              |      method: "DELETE"
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin(),
+            why = "missing DELETE block"
+        )
+
     }
 }

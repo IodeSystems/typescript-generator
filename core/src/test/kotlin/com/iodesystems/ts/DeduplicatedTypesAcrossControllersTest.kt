@@ -1,6 +1,7 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.iodesystems.ts.lib.ts
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -64,7 +65,7 @@ class DeduplicatedTypesAcrossControllersTest {
                 )
         }.generate()
 
-        val ts = out.tsApis()
+        val ts = out.ts()
 
         // Both controllers should be present
         assertTrue(ts.contains("export class AController"), "AController API not found in TS output")

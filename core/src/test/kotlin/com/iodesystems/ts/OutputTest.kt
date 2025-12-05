@@ -1,12 +1,12 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.*
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.OffsetDateTime
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -57,7 +57,6 @@ class OutputApiD {
 
 class OutputTest {
     @Test
-    @Ignore
     fun unifiedOutputTest() {
         TypeScriptGenerator.build { b ->
             b
@@ -77,22 +76,42 @@ class OutputTest {
         assertTrue(unifiedApi.exists(), "Unified mode should generate api.ts")
         val unified = unifiedApi.readText()
         // Should include lib helpers inline and API classes
-        assertTrue(unified.contains("export type ApiOptions"), "api.ts should include lib helpers when not split")
-        assertTrue(unified.contains("class OutputApiA"), "api.ts should contain OutputApiA")
-        assertTrue(unified.contains("class OutputApiB"), "api.ts should contain OutputApiB")
-        assertTrue(unified.contains("class OutputApiC"), "api.ts should contain OutputApiC")
-        assertTrue(
-            unified.contains("export type OutputApiDUnionTesting = OutputApiDUnionTestingOk | OutputApiDUnionTestingEr"),
-            "api.ts should render unions correctly, did not see expected `export type OutputApiDUnionTesting = OutputApiDUnionTestingOk | OutputApiDUnionTestingEr`"
+        unified.assertContains(
+            fragment = "export type ApiOptions",
+            why = "api.ts should include lib helpers when not split"
         )
-        assertTrue(
-            unified.contains("Promise<OutputApiDUnionTesting>"),
-            "api.ts should not render type parameters on return type unions"
+        unified.assertContains(
+            fragment = "class OutputApiA",
+            why = "api.ts should contain OutputApiA"
+        )
+        unified.assertContains(
+            fragment = "class OutputApiB",
+            why = "api.ts should contain OutputApiB"
+        )
+        unified.assertContains(
+            fragment = "class OutputApiC",
+            why = "api.ts should contain OutputApiC"
+        )
+
+        unified.assertContains(
+            fragment = "export type OutputApiDUnionTesting = OutputApiDUnionTestingEr | OutputApiDUnionTestingOk",
+            why = "api.ts should render unions correctly"
+        )
+
+        unified.assertContains(
+            fragment = "Promise<OutputApiDUnionTesting>",
+            why = "api.ts should not render type parameters on return type unions"
         )
         // External import line should be present
-        assertTrue(unified.contains("import type {Dayjs} from 'dayjs'"), "api.ts should include external import lines")
+        unified.assertContains(
+            fragment = "import type {Dayjs} from 'dayjs'",
+            why = "api.ts should include external import lines"
+        )
 
-        assertTrue(unified.contains("type OutputApiDUnionTesting ="), "api.ts should include typescript union parents")
+        unified.assertContains(
+            fragment = "type OutputApiDUnionTesting =",
+            why = "api.ts should include typescript union parents"
+        )
     }
 
     @Test
@@ -118,21 +137,25 @@ class OutputTest {
         assertTrue(sepApi.exists(), "Separate-lib mode should generate api.ts")
         val sepLibTxt = sepLib.readText()
         val sepApiTxt = sepApi.readText()
-        assertTrue(sepLibTxt.contains("export type ApiOptions"), "api-lib.ts should contain library helpers")
-        assertTrue(
-            sepApiTxt.contains("import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'"),
-            "api.ts should import from ./api-lib"
+        sepLibTxt.assertContains(
+            fragment = "export type ApiOptions",
+            why = "api-lib.ts should contain library helpers"
         )
-        assertTrue(sepApiTxt.contains("class OutputApiA"), "api.ts should contain APIs")
-        // External import line should still be present in API file
-        assertTrue(
-            sepApiTxt.contains("import type {Dayjs} from 'dayjs'"),
-            "api.ts should include external import lines"
+        sepApiTxt.assertContains(
+            fragment = "import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'",
+            why = "api.ts should import from ./api-lib"
+        )
+        sepApiTxt.assertContains(
+            fragment = "class OutputApiA",
+            why = "api.ts should contain APIs"
+        )
+        sepApiTxt.assertContains(
+            fragment = "import type {Dayjs} from 'dayjs'",
+            why = "api.ts should include typescript union parents"
         )
     }
 
     @Test
-    @Ignore
     fun groupedOutputTest() {
         // Generate grouped APIs
         TypeScriptGenerator.build {
@@ -171,32 +194,32 @@ class OutputTest {
         val bTxt = gB.readText()
         val rTxt = gRest.readText()
         // Each group file should import helpers from lib
-        assertTrue(aTxt.contains("from './api-lib'"), "a.ts should import from api-lib")
-        assertTrue(bTxt.contains("from './api-lib'"), "b.ts should import from api-lib")
-        assertTrue(rTxt.contains("from './api-lib'"), "rest.ts should import from api-lib")
+        aTxt.assertContains(fragment = "from './api-lib'", why = "a.ts should import from api-lib")
+        bTxt.assertContains(fragment = "from './api-lib'", why = "b.ts should import from api-lib")
+        rTxt.assertContains(fragment = "from './api-lib'", why = "rest.ts should import from api-lib")
         // API classes segregated
-        assertTrue(aTxt.contains("class OutputApiA"), "a.ts should contain OutputApiA only")
+        aTxt.assertContains(fragment = "class OutputApiA", why = "a.ts should contain OutputApiA only")
         kotlin.test.assertFalse(aTxt.contains("OutputApiB"), "a.ts should not contain OutputApiB")
         kotlin.test.assertFalse(aTxt.contains("OutputApiC"), "a.ts should not contain OutputApiC")
-        assertTrue(bTxt.contains("class OutputApiB"), "b.ts should contain OutputApiB only")
+        bTxt.assertContains(fragment = "class OutputApiB", why = "b.ts should contain OutputApiB only")
         kotlin.test.assertFalse(bTxt.contains("OutputApiA"), "b.ts should not contain OutputApiA")
         kotlin.test.assertFalse(bTxt.contains("OutputApiC"), "b.ts should not contain OutputApiC")
-        assertTrue(rTxt.contains("class OutputApiC"), "rest.ts should contain OutputApiC only")
+        rTxt.assertContains(fragment = "class OutputApiC", why = "rest.ts should contain OutputApiC only")
         kotlin.test.assertFalse(rTxt.contains("OutputApiA"), "rest.ts should not contain OutputApiA")
         kotlin.test.assertFalse(rTxt.contains("OutputApiB"), "rest.ts should not contain OutputApiB")
 
         // External import lines should appear in group api files where types are referenced
-        assertTrue(
-            aTxt.contains("import type {Dayjs} from 'dayjs'"),
-            "a.ts should include external import lines when referenced"
+        aTxt.assertContains(
+            fragment = "import type {Dayjs} from 'dayjs'",
+            why = "a.ts should include external import lines when referenced"
         )
-        assertTrue(
-            bTxt.contains("import type {Dayjs} from 'dayjs'"),
-            "b.ts should include external import lines when referenced"
+        bTxt.assertContains(
+            fragment = "import type {Dayjs} from 'dayjs'",
+            why = "b.ts should include external import lines when referenced"
         )
-        assertTrue(
-            rTxt.contains("import type {Dayjs} from 'dayjs'"),
-            "rest.ts should include external import lines when referenced"
+        rTxt.assertContains(
+            fragment = "import type {Dayjs} from 'dayjs'",
+            why = "rest.ts should include external import lines when referenced"
         )
     }
 
@@ -226,7 +249,6 @@ class OutputTest {
     }
 
     @Test
-    @Ignore
     fun splitTypesSimpleOutputTest() {
         // Simple mode with split types enabled (no groups)
         TypeScriptGenerator.build { b ->
@@ -251,14 +273,23 @@ class OutputTest {
         assertTrue(sApi.exists(), "Split-types simple mode should generate api.ts")
         val sTypesTxt = sTypes.readText()
         val sApiTxt = sApi.readText()
-        assertTrue(sTypesTxt.contains("export type Person"), "api-types.ts should contain exported Person type")
+        sTypesTxt.assertContains(
+            fragment = "export type Person",
+            why = "api-types.ts should contain exported Person type"
+        )
         kotlin.test.assertFalse(
             sApiTxt.contains("export type Person"),
             "api.ts should not declare Person type when split is enabled"
         )
-        assertTrue(
-            sApiTxt.contains("import type { Person, OutputApiDUnionTesting } from './api-types'"),
-            "api.ts should import Person and OutputApiDUnionTesting from ./api-types"
+        sApiTxt.assertContains(
+            fragment = "import Person from './api-types'\n",
+            why = "api.ts should import Person"
         )
+        sApiTxt.assertContains(
+            fragment = "import OutputApiDUnionTesting from './api-types'\n",
+            why = "api.ts should import OutputApiDUnionTesting"
+        )
+
+
     }
 }

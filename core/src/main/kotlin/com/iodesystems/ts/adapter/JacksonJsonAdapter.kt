@@ -88,26 +88,13 @@ class JacksonJsonAdapter : JsonAdapter {
 
     override fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? {
         val ctors = ci.constructorInfo
-            .filter { !it.isSynthetic }
-
+            .filter { it.isPublic && !it.isSynthetic }
         // Prefer a constructor annotated with @JsonCreator
         val creator = ctors.firstOrNull { ctor ->
             ctor.annotationInfo.get(com.fasterxml.jackson.annotation.JsonCreator::class.java.name) != null
         }
         if (creator != null) return creator
-
-        // Next, a constructor where all parameters have @JsonProperty
-        val allJsonProperty = ctors.firstOrNull { ctor ->
-            val params = ctor.parameterInfo
-            params.isNotEmpty() && params.all { pi ->
-                pi.annotationInfo.any { it.classInfo.name == com.fasterxml.jackson.annotation.JsonProperty::class.java.name }
-            }
-        }
-        if (allJsonProperty != null) return allJsonProperty
-
-        // Finally, if there is a single public non-synthetic constructor, use it for name resolution
-        val publicCtors = ctors.filter { it.isPublic }
-        return if (publicCtors.size == 1) publicCtors.first() else null
+        return super.chooseJsonConstructor(ci, scan)
     }
 
     override fun nameForConstructorParameter(

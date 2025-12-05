@@ -9,12 +9,15 @@ class TypeScriptGenerator(
         }
     }
 
-    fun generate(): Output {
+    fun emitter(): Emitter {
         val scanner = Scanner(config)
         val scanResult = scanner.scan()
         val apiRegistry = config.apiExtractor().extract(scanResult)
         val extraction = config.jvmExtractor().buildFromRegistry(scanResult, apiRegistry)
-        val emitter = Emitter(config)
-        return Output(extraction, emitter, config)
+        return Emitter(config, extraction)
+    }
+
+    fun generate(): Emitter.Output {
+        return emitter().ts()
     }
 }

@@ -57,6 +57,12 @@ data class Config(
     val externalImportLines: Map<String, String> = emptyMap(),
 ) {
 
+    companion object {
+        fun build(fn: Builder.() -> Builder): Config {
+            return Config().build(fn)
+        }
+    }
+
     fun build(fn: Builder.() -> Builder): Config {
         return Builder(this).fn().config
     }
