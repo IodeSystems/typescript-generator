@@ -94,12 +94,12 @@ class OutputTest {
         )
 
         unified.assertContains(
-            fragment = "export type OutputApiDUnionTesting = OutputApiDUnionTestingEr | OutputApiDUnionTestingOk",
+            fragment = "export type OutputApiDUnionTestingUnion = OutputApiDUnionTestingEr | OutputApiDUnionTestingOk",
             why = "api.ts should render unions correctly"
         )
 
         unified.assertContains(
-            fragment = "Promise<OutputApiDUnionTesting>",
+            fragment = "Promise<OutputApiDUnionTestingUnion>",
             why = "api.ts should not render type parameters on return type unions"
         )
         // External import line should be present
@@ -109,7 +109,7 @@ class OutputTest {
         )
 
         unified.assertContains(
-            fragment = "type OutputApiDUnionTesting =",
+            fragment = "type OutputApiDUnionTestingUnion =",
             why = "api.ts should include typescript union parents"
         )
     }
@@ -282,12 +282,8 @@ class OutputTest {
             "api.ts should not declare Person type when split is enabled"
         )
         sApiTxt.assertContains(
-            fragment = "import Person from './api-types'\n",
-            why = "api.ts should import Person"
-        )
-        sApiTxt.assertContains(
-            fragment = "import OutputApiDUnionTesting from './api-types'\n",
-            why = "api.ts should import OutputApiDUnionTesting"
+            fragment = "import { OutputApiDUnionTestingUnion, Person } from './api-types'\n",
+            why = "api.ts should import needed types via a single barrelized named import"
         )
 
 

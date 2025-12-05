@@ -6,14 +6,17 @@ data class ApiMethod(
     val path: String,
     val requestBodyType: TsType?,
     val responseBodyType: TsType,
-    // Optional query parameters bag type (combined from @RequestParam and non-body params)
     val queryParamsType: TsType? = null,
-    // Map of path template key -> TsField (property name + type)
-    val pathTsFields: List<PathReplacement> = emptyList(),
+    val pathReplacements: List<PathParam> = emptyList(),
 ) {
-    data class PathReplacement(
+    data class PathParam(
+        val name: String,
         val placeholder: String,
-        val field: String,
-        val type: TsType
-    )
+        val type: Type
+    ) {
+        enum class Type {
+            STRING,
+            NUMBER,
+        }
+    }
 }

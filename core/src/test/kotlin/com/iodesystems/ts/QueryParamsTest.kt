@@ -1,13 +1,9 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.lib.Asserts.assertContains
 import com.iodesystems.ts.emitter.EmitterTest.Companion.content
 import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
-import kotlin.test.Ignore
+import com.iodesystems.ts.lib.Asserts.assertContains
+import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
 
 data class QUser(val name: String, val age: Int)
@@ -23,25 +19,53 @@ class QueryParamsController {
         @RequestParam ids: List<Long>,
         @RequestParam users: List<QUser>,
     ): String = "ok"
+
+
+    @GetMapping("/with/{path}/{param}")
+    fun withPath(
+        @PathVariable("path") path: String,
+        @PathVariable("param") param: Long,
+        @RequestParam("name") name: String?,
+        @RequestParam(required = false) minAge: Int?,
+        @RequestParam ids: List<Long>,
+        @RequestParam users: List<QUser>,
+    ): String = "ok"
 }
 
 class QueryParamsTest {
 
     @Test
-    @Ignore
     fun testQueryParamsEmission() {
         val em = emitter<QueryParamsController>()
         val content = em.ts().content()
         content.assertContains(
+            """
+            export type QueryParamsControllerListQuery = {
+              name?: string | null | undefined
+              minAge?: number | null | undefined
+              ids: Array<number>
+              users: Array<QUser>
+            }
+        """.trimIndent(), "The query type should be emitted"
+        )
+        content.assertContains(
             fragment = """
-                list(query: { name?: string, minAge?: number, ids: number[], users: { name: string, age: number }[] }): Promise<string> {
-                  return fetchInternal(this.opts, flattenQueryParams("/q", query, null), {
-                    method: "GET"
-                  }).then(r=>r.json())
-                }
-            """.trimIndent(),
+               |  list(query: QueryParamsControllerListQuery): Promise<string> {
+               |    return fetchInternal(this.opts, flattenQueryParams("/q", query, null), {
+               |      method: "GET"
+               |    }).then(r=>r.json())
+               |  }
+            """.trimMargin("|"),
             why = "Query method should gather params into a single query object and call flattenQueryParams"
         )
+
+        content.assertContains("""
+            |  withPath(path: { path: string, param: string | number }, query: QueryParamsControllerWithPathQuery): Promise<string> {
+            |    return fetchInternal(this.opts, flattenQueryParams("/q/with/{path}/{param}".replace("{path}", String(path.path)).replace("{param}", String(path.param)), query, null), {
+            |      method: "GET"
+            |    }).then(r=>r.json())
+            |  }
+        """.trimMargin(), "should work well with path replacements as well")
 
     }
 }

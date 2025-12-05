@@ -18,13 +18,13 @@ data class TsRef(
     }
 }
 
+
 sealed interface TsType {
     val jvmQualifiedClassName: String
     val tsName: String
     val isOptional: Boolean
     val isNullable: Boolean
     val tsGenericParameters: Map<String, Inline>
-
 
     fun inlineReference(
         definedGenerics: Map<String, Inline> = emptyMap(),
@@ -55,6 +55,7 @@ sealed interface TsType {
         override val isNullable: Boolean,
         val fields: Map<String, TsField>,
         val discriminator: Pair<String, String>? = null,
+        val supertypes: List<TsType> = emptyList(),
         override val tsGenericParameters: Map<String, Inline>,
     ) : TsType
 
@@ -65,6 +66,7 @@ sealed interface TsType {
         override val isNullable: Boolean,
         val discriminatorField: String,
         val children: List<TsType> = emptyList(),
+        val supertypes: List<TsType> = emptyList(),
     ) : TsType {
         override val tsGenericParameters: Map<String, Inline> = emptyMap()
     }

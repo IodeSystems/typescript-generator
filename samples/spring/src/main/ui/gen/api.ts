@@ -1,10 +1,9 @@
-import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
 import type {Dayjs} from 'dayjs'
-import type { SampleApiAdd, SampleApiAddResponseFailure, SampleApiAddResponseSuccess } from './api-types'
-
+import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+import { SampleApiAdd, SampleApiAddResponseUnion } from './api-types'
 export class SampleApi {
   constructor(private opts: ApiOptions = {}) {}
-  add(req: SampleApiAdd): Promise<SampleApiAddResponse> {
+  add(req: SampleApiAdd): Promise<SampleApiAddResponseUnion> {
     return fetchInternal(this.opts, "/api/sample", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},

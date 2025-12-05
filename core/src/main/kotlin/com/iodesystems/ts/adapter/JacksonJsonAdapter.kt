@@ -11,6 +11,30 @@ import io.github.classgraph.ScanResult
 
 // Default no-op Jackson adapter (baseline behavior remains unchanged for now)
 class JacksonJsonAdapter : JsonAdapter {
+    override fun isOptional(an: List<io.github.classgraph.AnnotationInfo>): Boolean? {
+        val jp = an.firstOrNull { it.classInfo.name == JsonProperty::class.java.name } ?: return super.isOptional(an)
+        val required = jp.parameterValues.firstOrNull { it.name == "required" }?.value as? Boolean
+        val defaultValue = jp.parameterValues.firstOrNull { it.name == "defaultValue" }?.value as? String
+        if (required == false) return true
+        if (!defaultValue.isNullOrBlank()) return true
+        return super.isOptional(an)
+    }
+
+    override fun resolveRenameFromAnnotations(annotations: List<io.github.classgraph.AnnotationInfo>): String? {
+        fun resolveFromAnnotations(anns: List<io.github.classgraph.AnnotationInfo>): String? {
+            val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
+            val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
+            if (!explicit.isNullOrBlank()) return explicit
+
+            val ja = anns.firstOrNull { it.classInfo.name == JsonAlias::class.java.name }
+            val aliases = ja?.parameterValues?.firstOrNull { it.name == "value" }?.value as? Array<*>
+            val firstAlias = aliases?.firstOrNull() as? String
+            if (!firstAlias.isNullOrBlank()) return firstAlias
+            return null
+        }
+        return resolveFromAnnotations(annotations)
+    }
+
     override fun resolveFieldName(parent: ClassInfo, inspection: TsFieldInspection): String {
         fun resolveFromAnnotations(anns: List<io.github.classgraph.AnnotationInfo>): String? {
             val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }

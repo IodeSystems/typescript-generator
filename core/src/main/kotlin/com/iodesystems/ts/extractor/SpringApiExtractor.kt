@@ -1,21 +1,15 @@
 package com.iodesystems.ts.extractor
 
 import com.iodesystems.ts.Config
-import com.iodesystems.ts.model.TsHttpMethod
 import com.iodesystems.ts.extractor.registry.ApiRegistry
 import com.iodesystems.ts.lib.Log.logger
+import com.iodesystems.ts.model.TsHttpMethod
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
-// Spring-specific extractor that focuses on discovering API apiMethods and wiring request/response/query types.
-// JVM/type-level extraction is delegated to the JvmExtractor base.
 class SpringApiExtractor(val config: Config) : ApiExtractor {
     private val log = logger()
 
@@ -80,7 +74,10 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                                             }
                                         }
 
-                                        if (!warnedMissingParameters && (pi.name.isNullOrBlank() || pi.name!!.matches(Regex("(arg|p)\\d+")))) {
+                                        if (!warnedMissingParameters && (pi.name.isNullOrBlank() || pi.name!!.matches(
+                                                Regex("(arg|p)\\d+")
+                                            ))
+                                        ) {
                                             log.warn("ApiMethod parameter names appear to be missing. Compile sources with -parameters to retain names for better query param generation.")
                                             warnedMissingParameters = true
                                         }
@@ -90,9 +87,11 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                                         }
 
                                         // Optional if RequestParam.required=false or annotated as optional/nullable per Config
-                                        val requiredFlag = (rp?.parameterValues?.firstOrNull { it.name == "required" }?.value as? Boolean)
+                                        val requiredFlag =
+                                            (rp?.parameterValues?.firstOrNull { it.name == "required" }?.value as? Boolean)
                                         val anns = pi.annotationInfo.map { it.classInfo.name }
-                                        val isOptionalByAnn = anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
+                                        val isOptionalByAnn =
+                                            anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                                         val optional = (requiredFlag == false) || isOptionalByAnn
 
                                         queryParam(idx, rpName, optional)
@@ -100,8 +99,10 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                                     }
 
                                     if (pv != null || pi.annotationInfo.any { it.classInfo.name.endsWith("PathVariable") }) {
-                                        val ann = pv ?: pi.annotationInfo.first { it.classInfo.name.endsWith("PathVariable") }
-                                        val annName = ann.parameterValues.firstOrNull { it.name == "name" || it.name == "value" }?.value as? String
+                                        val ann =
+                                            pv ?: pi.annotationInfo.first { it.classInfo.name.endsWith("PathVariable") }
+                                        val annName =
+                                            ann.parameterValues.firstOrNull { it.name == "name" || it.name == "value" }?.value as? String
                                         val paramName = pi.name ?: "p$idx"
                                         val placeholder = if (!annName.isNullOrBlank()) annName else paramName
                                         if (!seenPathNames.add(placeholder)) {
@@ -109,7 +110,8 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                                         }
                                         // For path variables, optional isn't typical; accept nullable/optional annotations for completeness
                                         val anns = pi.annotationInfo.map { it.classInfo.name }
-                                        val isOptionalByAnn = anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
+                                        val isOptionalByAnn =
+                                            anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                                         pathParam(idx, placeholder, paramName, isOptionalByAnn)
                                         return@forEachIndexed
                                     }

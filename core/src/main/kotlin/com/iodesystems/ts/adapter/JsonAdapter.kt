@@ -86,6 +86,11 @@ interface JsonAdapter {
         param: MethodParameterInfo
     ): String? = param.name
 
+    // Given a combined set of annotations collected across field/getter/setter/ctor param
+    // for the same logical property, adapters may derive a rename (e.g., @JsonProperty/@JsonAlias).
+    // Default: no rename.
+    fun resolveRenameFromAnnotations(annotations: List<AnnotationInfo>): String? = null
+
     fun isNullable(s: HierarchicalTypeSignature, k: KmType?, an: List<AnnotationInfo>): Boolean? {
         isNullable(an)?.let { return it }
         if (k !== null) return k.isNullable
@@ -108,6 +113,7 @@ interface JsonAdapter {
         val type: HierarchicalTypeSignature,
         val optional: Boolean?,
         val nullable: Boolean?,
+        val annotations: List<AnnotationInfo>,
     )
 
     fun isOptional(an: List<AnnotationInfo>): Boolean? {
@@ -123,24 +129,48 @@ interface JsonAdapter {
     }
 
     fun resolveFiledInfoFromField(f: FieldInfo): ResolvedFieldInfo {
-        TODO()
+        return ResolvedFieldInfo(
+            name = f.name,
+            rename = null,
+            type = f.typeSignatureOrTypeDescriptor,
+            optional = isOptional(f.annotationInfo?.toList() ?: emptyList()),
+            nullable = isNullable(f.annotationInfo),
+            annotations = f.annotationInfo?.toList() ?: emptyList()
+        )
     }
 
     fun resolveFieldInfoFromGetterOrSetter(f: MethodInfo): ResolvedFieldInfo {
-        val name = if (f.name.startsWith("is")) {
-            f.name[2].lowercase() + f.name.substring(3)
-        } else {
-            f.name[3].lowercase() + f.name.substring(4)
+        val methodName = f.name
+        val (propName, isSetter) = when {
+            methodName.startsWith("is") && methodName.length > 2 ->
+                (methodName[2].lowercase() + methodName.substring(3)) to false
+            methodName.startsWith("get") && methodName.length > 3 ->
+                (methodName[3].lowercase() + methodName.substring(4)) to false
+            methodName.startsWith("set") && methodName.length > 3 ->
+                (methodName[3].lowercase() + methodName.substring(4)) to true
+            else -> methodName to (f.parameterInfo.isNotEmpty())
         }
-        if (f.parameterInfo.isNotEmpty()) {
-            TODO()
+
+        return if (isSetter) {
+            val p = f.parameterInfo.firstOrNull()
+            ResolvedFieldInfo(
+                name = propName,
+                rename = null,
+                type = p?.typeSignatureOrTypeDescriptor ?: f.typeSignatureOrTypeDescriptor.resultType,
+                optional = isOptional(((p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
+                    ?: emptyList()))),
+                nullable = isNullable((p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
+                    ?: emptyList())),
+                annotations = (p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList() ?: emptyList())
+            )
         } else {
-            return ResolvedFieldInfo(
-                name = name,
+            ResolvedFieldInfo(
+                name = propName,
                 rename = null,
                 type = f.typeSignatureOrTypeDescriptor.resultType,
-                optional = null,
-                nullable = isNullable(f.annotationInfo)
+                optional = isOptional(f.annotationInfo?.toList() ?: emptyList()),
+                nullable = isNullable(f.annotationInfo),
+                annotations = f.annotationInfo?.toList() ?: emptyList()
             )
         }
     }
@@ -155,8 +185,9 @@ interface JsonAdapter {
             name = f.name,
             rename = null,
             type = f.typeSignatureOrTypeDescriptor,
-            optional = optional,
-            nullable = isNullable(f.annotationInfo)
+            optional = optional ?: isOptional(f.annotationInfo?.toList() ?: emptyList()),
+            nullable = isNullable(f.annotationInfo),
+            annotations = f.annotationInfo?.toList() ?: emptyList()
         )
     }
 }

@@ -68,11 +68,6 @@ class ApiMethodDescriptor(
             this.bodyIndex = index
         }
 
-        fun param(index: Int, name: String, optional: Boolean = false) {
-            // Backwards-compat: treat as query param
-            params += ParamDescriptor(index, name, optional, ParamKind.QUERY, null)
-        }
-
         fun queryParam(index: Int, name: String, optional: Boolean = false) {
             params += ParamDescriptor(index, name, optional, ParamKind.QUERY, null)
         }

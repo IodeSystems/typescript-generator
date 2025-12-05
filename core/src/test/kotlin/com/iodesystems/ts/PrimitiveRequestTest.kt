@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import kotlin.test.Ignore
 import kotlin.test.Test
 
 @RestController
@@ -15,28 +14,40 @@ import kotlin.test.Test
 class Primitive {
 
     @PostMapping
-    fun post(
-        @RequestBody req: String
-    ): Boolean? = null
+    fun nullResponse(@RequestBody req: String): Boolean? = null
+
+    @PostMapping
+    fun nullRequest(@RequestBody req: String?): Boolean = false
 }
 
 class PrimitiveRequestTest {
 
     @Test
-    @Ignore
     fun testPrimitiveRequestResponses() {
         val em = emitter<Primitive>()
         val content = em.ts().content()
         content.assertContains(
             fragment = """
-                post(req: string): Promise<boolean | null> {
-                  return fetchInternal(this.opts, "/", {
-                    method: "POST",
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(req)
-                  }).then(r=>r.json())
-                }
-            """.trimIndent(),
+              |  nullResponse(req: string): Promise<boolean | null> {
+              |    return fetchInternal(this.opts, "/", {
+              |      method: "POST",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin("|"),
+            why = "Primitive request body and nullable boolean response should be encoded/decoded properly"
+        )
+        content.assertContains(
+            fragment = """
+              |  nullRequest(req: string | null): Promise<boolean> {
+              |    return fetchInternal(this.opts, "/", {
+              |      method: "POST",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin("|"),
             why = "Primitive request body and nullable boolean response should be encoded/decoded properly"
         )
     }

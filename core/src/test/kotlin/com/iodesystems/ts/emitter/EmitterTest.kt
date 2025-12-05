@@ -112,12 +112,11 @@ class EmitterTest {
     }
 
     @Test
-    @Ignore
     fun kitchenSink() {
         val emitter = emitter<KitchenSink>()
         val result = emitter.ts().content()
         result.assertContains(
-            "post(req:Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnion> {",
+            "post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnionUnion> {",
             "generics should be resolved here"
         )
         result.assertContains(

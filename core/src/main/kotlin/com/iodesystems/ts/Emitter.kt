@@ -1,6 +1,7 @@
 package com.iodesystems.ts
 
 import com.iodesystems.ts.extractor.JvmExtractor
+import com.iodesystems.ts.model.ApiMethod
 import com.iodesystems.ts.model.ApiModel
 import com.iodesystems.ts.model.TsRef
 import com.iodesystems.ts.model.TsType
@@ -65,6 +66,25 @@ class Emitter(
           }
         }
         """.trimIndent()
+
+        fun fieldName(name: String): String {
+            if (name.isEmpty()) error("Name must not be empty")
+            val first = name[0]
+            val needsQuotes = first.isDigit() ||
+                    !first.isLetterOrDigit() && first != '_' && first != '$' ||
+                    name.any { !it.isLetterOrDigit() && it != '_' && it != '$' } ||
+                    name in setOf(
+                "break", "case", "catch", "class", "const", "continue",
+                "debugger", "default", "delete", "do", "else", "enum",
+                "export", "extends", "false", "finally", "for", "function",
+                "if", "import", "in", "instanceof", "new", "null", "return",
+                "super", "switch", "this", "throw", "true", "try", "typeof",
+                "var", "void", "while", "with", "as", "implements",
+                "interface", "let", "package", "private", "protected",
+                "public", "static", "yield"
+            )
+            return if (needsQuotes) "\"$name\"" else name
+        }
 
         fun tsNameWithGenericsResolved(type: TsType): String {
             val name = type.tsName
@@ -205,12 +225,17 @@ class Emitter(
                 }
 
                 is TsType.Object -> {
+                    val supers = type.supertypes
+                    if (supers.isNotEmpty()) {
+                        o.write(supers.joinToString(" & ") { tsNameWithGenericsResolved(it) })
+                        o.write(" & ")
+                    }
                     o.write("{\n")
                     type.discriminator?.let { (key, value) ->
                         o.write("  \"${key}\": \"$value\"\n")
                     }
                     type.fields.forEach { (field, f) ->
-                        o.write("  $field")
+                        o.write("  ${fieldName(field)}")
                         if (f.optional) {
                             o.write("?")
                         }
@@ -229,10 +254,15 @@ class Emitter(
                 }
 
                 is TsType.Union -> {
-                    o.write(type.children.joinToString(" | ") { child ->
-                        child.tsName
-                    })
-                    o.write("\n")
+                    val unionBody = type.children.joinToString(" | ") { child ->
+                        tsNameWithGenericsResolved(child)
+                    }
+                    if (type.supertypes.isNotEmpty()) {
+                        val supers = type.supertypes.joinToString(" & ") { tsNameWithGenericsResolved(it) }
+                        o.write("$supers & ($unionBody)\n")
+                    } else {
+                        o.write("$unionBody\n")
+                    }
                 }
 
                 is TsType.Enum -> {
@@ -258,10 +288,13 @@ class Emitter(
                 importTypes.add(ref.toTsBaseName)
             }
 
-            importTypes.forEach { tsBaseName ->
+            if (importTypes.isNotEmpty()) {
                 val ctx = writeContextForType()
-                if (ctx == o) return@forEach
-                o.write("import $tsBaseName from '${o.importFrom(ctx).dropLast(3)}'\n")
+                if (ctx != o) {
+                    val path = o.importFrom(ctx).dropLast(3)
+                    val names = importTypes.toList().sorted().joinToString(", ")
+                    o.write("import { ${names} } from '${path}'\n")
+                }
             }
 
             o.write("export class ${api.tsBaseName} {\n")
@@ -269,19 +302,45 @@ class Emitter(
             api.apiMethods.forEach { method ->
                 val req = method.requestBodyType
                 val res = method.responseBodyType
-                val sig = listOfNotNull(
-                    req?.let { body ->
-                        "req: " + tsNameWithGenericsResolved(body)
+
+                fun withNullability(name: String, t: TsType?): String {
+                    if (t == null) return name
+                    val nullable = if (t.isNullable) " | null" else ""
+                    val optional = if (t.isOptional) " | undefined" else ""
+                    return name + nullable + optional
+                }
+
+                // Build TypeScript method signature: path, query, req
+                val sigParts = mutableListOf<String>()
+                if (method.pathReplacements.isNotEmpty()) {
+                    val fields = method.pathReplacements.joinToString(", ") { p ->
+                        val tsType = when (p.type) {
+                            ApiMethod.PathParam.Type.STRING -> "string"
+                            ApiMethod.PathParam.Type.NUMBER -> "string | number"
+                        }
+                        "${p.name}: ${tsType}"
                     }
-                ).joinToString(", ")
-                o.write("  ${method.name}($sig): Promise<${tsNameWithGenericsResolved(method.responseBodyType)}> {\n")
+                    sigParts += "path: { ${fields} }"
+                }
+                if (method.queryParamsType != null) {
+                    val qn = tsNameWithGenericsResolved(method.queryParamsType)
+                    sigParts += "query: ${qn}"
+                }
+                if (req != null) {
+                    val bodyName = tsNameWithGenericsResolved(req)
+                    sigParts += (if (req.isOptional) "req?: " else "req: ") + withNullability(bodyName, req)
+                }
+
+                val sig = sigParts.joinToString(", ")
+                val resName = withNullability(tsNameWithGenericsResolved(res), res)
+                o.write("  ${method.name}($sig): Promise<${resName}> {\n")
                 o.write("    return fetchInternal(this.opts, ")
                 if (method.queryParamsType != null) {
                     o.write("flattenQueryParams(")
                 }
                 o.write("\"${method.path}\"")
-                method.pathTsFields.forEach { repl ->
-                    o.write(".replace(\"{${repl.placeholder}}\", String(path.${repl.field}))")
+                method.pathReplacements.forEach { p ->
+                    o.write(".replace(\"{${p.placeholder}}\", String(path.${p.name}))")
                 }
                 if (method.queryParamsType != null) {
                     o.write(", query, null)")
