@@ -175,7 +175,8 @@ class OutputTest {
                 .mappedType(LocalDate::class, "string")
                 .mappedType(LocalTime::class, "string")
                 .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
-        }.generate().write()
+        }.generate()
+            .write()
 
         // Verify grouped outputs structure and contents
         val gDir = File("./build/test/output-test/api-groups")

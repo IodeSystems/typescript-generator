@@ -161,6 +161,7 @@ class Emitter(
     ) {
         fun write() {
             files.forEach {
+                it.file.parentFile.mkdirs()
                 if (it.file.exists()) it.file.delete()
             }
             files.forEach { file ->
