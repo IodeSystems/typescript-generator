@@ -209,17 +209,18 @@ class Emitter(
                     type.discriminator?.let { (key, value) ->
                         o.write("  \"${key}\": \"$value\"\n")
                     }
-                    type.fields.forEach { (field, type) ->
+                    type.fields.forEach { (field, f) ->
                         o.write("  $field")
-                        if (type.optional) {
+                        if (f.optional) {
                             o.write("?")
                         }
                         o.write(": ")
-                        o.write(type.tsName)
-                        if (type.nullable) {
+                        val fieldType = tsNameWithGenericsResolved(f.type)
+                        o.write(fieldType)
+                        if (f.nullable) {
                             o.write(" | null")
                         }
-                        if (type.optional) {
+                        if (f.optional) {
                             o.write(" | undefined")
                         }
                         o.write("\n")
@@ -231,6 +232,11 @@ class Emitter(
                     o.write(type.children.joinToString(" | ") { child ->
                         child.tsName
                     })
+                    o.write("\n")
+                }
+
+                is TsType.Enum -> {
+                    o.write(type.unionLiteral)
                     o.write("\n")
                 }
             }

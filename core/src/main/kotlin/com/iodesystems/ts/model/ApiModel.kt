@@ -13,6 +13,7 @@ data class ApiModel(
                 is TsType.Inline -> {}
                 is TsType.Object -> typeUsed.add(type)
                 is TsType.Union -> typeUsed.add(type)
+                is TsType.Enum -> typeUsed.add(type)
             }
         }
         apiMethods.forEach { method ->

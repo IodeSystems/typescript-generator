@@ -2,7 +2,7 @@ package com.iodesystems.ts.model
 
 
 data class TsField(
-    val tsName: String,
+    val type: TsType,
     val optional: Boolean,
     val nullable: Boolean,
 )
@@ -65,6 +65,16 @@ sealed interface TsType {
         override val isNullable: Boolean,
         val discriminatorField: String,
         val children: List<TsType> = emptyList(),
+    ) : TsType {
+        override val tsGenericParameters: Map<String, Inline> = emptyMap()
+    }
+
+    data class Enum(
+        override val jvmQualifiedClassName: String,
+        override val tsName: String,
+        override val isOptional: Boolean,
+        override val isNullable: Boolean,
+        val unionLiteral: String,
     ) : TsType {
         override val tsGenericParameters: Map<String, Inline> = emptyMap()
     }

@@ -163,20 +163,6 @@ data class JvmExtractor(
                             )
                         }
 
-                        fun KmType.typeSignature(): HierarchicalTypeSignature {
-                            return when (val cls = this.classifier) {
-                                is KmClassifier.Class -> {
-                                    when (cls.name) {
-                                        "kotlin/String" -> scan.getClassInfo("java.lang.String")
-                                        else -> TODO()
-                                    }
-                                }
-
-                                is KmClassifier.TypeAlias -> TODO()
-                                is KmClassifier.TypeParameter -> TODO()
-                            }.typeSignatureOrTypeDescriptor
-                        }
-
                         val createdType: TsType = when (s) {
                             is BaseTypeSignature -> {
                                 // This is used when we have a primitive value - these are NON nullable by the JVM
@@ -277,11 +263,15 @@ data class JvmExtractor(
                                         val typeCi = shim.getClassInfo()
                                         val ti = typeCi.typeSignatureOrTypeDescriptor
                                         val type = if (typeCi.isEnum) {
-                                            inline(
-                                                fqcn,
-                                                jsonAdapter.enumSerializedTypeOrNull(
+                                            TsType.Enum(
+                                                jvmQualifiedClassName = fqcn,
+                                                tsName = typeCi.tsName(),
+                                                isOptional = false,
+                                                isNullable = false,
+                                                unionLiteral = jsonAdapter.enumSerializedTypeOrNull(
                                                     typeCi.name,
-                                                    typeCi.enumConstants.map { it.name })
+                                                    typeCi.enumConstants.map { it.name }
+                                                ),
                                             )
                                         } else {
                                             val resolved = jsonAdapter.resolveDiscriminatedSubTypes(scan, typeCi)
@@ -352,7 +342,7 @@ data class JvmExtractor(
                                                             val fieldType = registerType(type!!)
                                                             Pair(
                                                                 rename ?: name, TsField(
-                                                                    tsName = fieldType.tsName,
+                                                                    type = fieldType,
                                                                     optional = optional ?: false,
                                                                     nullable = nullable ?: false
                                                                 )
@@ -379,7 +369,7 @@ data class JvmExtractor(
                                                     v.typeRef(objectType)
                                                 }
                                                 objectType.fields.values.forEach { f ->
-                                                    types.firstOrNull { t -> f.tsName == t.tsName }
+                                                    types.firstOrNull { t -> f.type.tsName == t.tsName }
                                                         ?.typeRef(objectType)
                                                 }
 
@@ -413,7 +403,7 @@ data class JvmExtractor(
                                             }
                                         }
 
-                                        if (ti != null) (ti.superinterfaceSignatures + ti.superclassSignature)
+                                        if (!typeCi.isEnum && ti != null) (ti.superinterfaceSignatures + ti.superclassSignature)
                                             .filterNotNull()
                                             .filter { !inProgress.contains(it) }
                                             .map { sig ->
@@ -444,7 +434,8 @@ data class JvmExtractor(
                             is TsType.Inline -> {}
 
                             is TsType.Object,
-                            is TsType.Union -> addType(createdType)
+                            is TsType.Union,
+                            is TsType.Enum -> addType(createdType)
                         }
                         inProgress.remove(s)
                         return createdType
