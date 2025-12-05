@@ -137,13 +137,21 @@ output.write()
 - `typesFileName` (String?): When grouping or splitting types, the output types file name (e.g., `api-types.ts`).
 - `externalImportLines` (Map<String,String>): Map of simple type name to import line to emit at top of files.
 
-### Advanced
-
-- `classPathUrls` (Set<String>, Gradle: `SetProperty<String>`): Custom classpath entries the scanner should use. The Gradle plugin auto-populates this from your `main` source set outputs and compile classpath; you typically do not need to set this manually unless you are invoking the generator programmatically or have a non-standard build layout.
-
 ## Spring Boot Support
 
 Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `basePackages`, `includeApiIncludes`, and `includeApiExcludes` to control the scope.
+
+## Samples
+
+- Spring Boot sample: `samples/spring`
+  - Demonstrates applying the Gradle plugin in a simple Spring HTTP API and generating TypeScript outputs.
+  - Generate the sample’s TypeScript files from the repo root:
+    ```bash
+    cd samples/spring
+    ./gradlew :generateTypescript
+    ```
+  - Outputs are written to `samples/spring/src/main/ui/gen/` (e.g., `api.ts`, `api-lib.ts`, `api-types.ts` depending on configuration).
+  - You can explore the sample’s `build.gradle.kts` for a concrete plugin configuration.
 
 ## Building
 
