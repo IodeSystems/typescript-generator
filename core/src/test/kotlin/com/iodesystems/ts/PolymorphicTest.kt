@@ -21,7 +21,8 @@ class Poly {
     }
 
     class Response(
-        override val a: String, override val b: Boolean
+        override val a: String,
+        override val b: Boolean
     ) : IContainer<String, Boolean>
 
     @PostMapping
@@ -69,8 +70,6 @@ class PolymorphicTest {
         content.assertContains(
             fragment = """
             type PolyResponse = PolyIContainer<string,boolean> & {
-              a: string
-              b: boolean
             }
         """.trimIndent(),
             why = "Response should intersect its implemented interface with concrete type arguments"

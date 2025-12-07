@@ -1,16 +1,22 @@
 package com.iodesystems.ts.extractor
 
-import io.github.classgraph.ClassInfo
-import io.github.classgraph.ClassRefTypeSignature
-import io.github.classgraph.ClassTypeSignature
-import io.github.classgraph.HackSessor
-import io.github.classgraph.HierarchicalTypeSignature
+import io.github.classgraph.*
 
 sealed interface ClassShim {
     fun fqcn(): String
     fun getTypeArguments(): List<HierarchicalTypeSignature>
     fun getClassInfo(): ClassInfo
     fun getSuffixTypeArguments(): List<List<HierarchicalTypeSignature>>
+
+    companion object {
+        fun forSignature(s: HierarchicalTypeSignature): ClassShim {
+            return when (s) {
+                is ClassTypeSignature -> ClassTypeShim(s)
+                is ClassRefTypeSignature -> ClassRefShim(s)
+                else -> error("Invalid signature type: $s")
+            }
+        }
+    }
 
 
     class ClassTypeShim(sig: ClassTypeSignature) : ClassShim {

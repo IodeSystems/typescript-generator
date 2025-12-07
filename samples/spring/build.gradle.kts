@@ -23,10 +23,12 @@ generateTypescript {
     )
     mappedTypes.putAll(
         mapOf(
-            OffsetDateTime::class.qualifiedName to "Dayjs",
+            OffsetDateTime::class.qualifiedName!! to "Dayjs",
         )
     )
 }
+
+tasks.build { dependsOn(tasks.generateTypescript) }
 
 idea {
     module {
@@ -48,4 +50,13 @@ node {
 dependencies {
     implementation(libs.logback)
     implementation(libs.spring.boot.starter.web)
+    testImplementation(kotlin("test"))
+    testImplementation("com.microsoft.playwright:playwright:1.49.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.3")
+}
+
+tasks.test {
+    // Ensure Node and dependencies are available before running tests
+    dependsOn("npmInstall")
+    useJUnitPlatform()
 }

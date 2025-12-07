@@ -95,6 +95,8 @@ class EmitterTest {
             val items: List<B>
         ) : Container<A>(item)
 
+        data class Other(val value: String)
+
         @PostMapping
         fun post(
             @RequestBody
@@ -109,6 +111,30 @@ class EmitterTest {
 
         @GetMapping
         fun get(): List<Get.Response?> = error("test")
+
+        @GetMapping("/{id}")
+        fun path(
+            @PathVariable id: Long
+        ) {
+        }
+
+        data class SearchQuery(
+            val q: String,
+            @RequestParam(required = false)
+            val limit: Int?
+        )
+
+        @GetMapping("/search")
+        fun search(
+            @RequestParam("q") q: String,
+            @RequestParam(required = false) limit: Int?
+        ): List<Int> = error("test")
+
+        @PostMapping("/optional")
+        fun optional(
+            @RequestBody req: Other?
+        ) {
+        }
     }
 
     @Test
@@ -122,6 +148,46 @@ class EmitterTest {
         result.assertContains(
             "get(): Promise<Array<EmitterTestKitchenSinkGetResponse | null>> {",
             "generics should be resolved here"
+        )
+
+        // Path parameter handling
+        result.assertContains(
+            "path(path: { id: string | number }): Promise<void> {",
+            "should generate a path param object with string | number for numeric id"
+        )
+        result.assertContains(
+            ".replace(\"{id}\", String(path.id))",
+            "should replace {id} placeholder with provided path param"
+        )
+
+        // Query parameter handling + flattenQueryParams usage
+        result.assertContains(
+            "search(query: EmitterTestKitchenSinkSearchQuery): Promise<Array<number>> {",
+            "should generate named query type and return array of numbers"
+        )
+        result.assertContains(
+            "return fetchInternal(this.opts, flattenQueryParams(\"/search\", query, null), {",
+            "should call flattenQueryParams when query params exist"
+        )
+
+        // Optional/nullable request body handling (nullable body still serializes with headers)
+        result.assertContains(
+            "optional(req: EmitterTestKitchenSinkOther | null): Promise<void> {",
+            "nullable body type should be reflected in signature"
+        )
+        result.assertContains(
+            "headers: {'Content-Type': 'application/json'},",
+            "methods with request bodies should set JSON content headers"
+        )
+
+        // Type emissions: union alias and nested DTOs
+        result.assertContains(
+            "export type EmitterTestKitchenSinkUnionUnion = EmitterTestKitchenSinkUnion & (EmitterTestKitchenSinkUnionOk | EmitterTestKitchenSinkUnionUhoh)",
+            "union type should flatten into a literal union"
+        )
+        result.assertContains(
+            "export type EmitterTestKitchenSinkGetResponse = {\n  items?: Array<string> | undefined\n}",
+            "nested response DTO with defaulted list should be optional and include undefined in type"
         )
     }
 }

@@ -167,13 +167,23 @@ class TypeScriptGeneratorTest {
               price: number
               huge: string
             }
-            export type TestApiSimpleResponseFailure = {
-              _type: "Failure"
+            export type TestApiSimpleResponse = {
             }
-            export type TestApiSimpleResponseOk = {
-              _type: "Ok"
+            export type NestedSomeInterface = {
+              interfaceValue: string
             }
-            export type TestApiSimpleResponseUnion = TestApiSimpleResponseFailure | TestApiSimpleResponseOk
+            export type ReferencedType = NestedSomeInterface & {
+              circularTypeReference: ReferencedType | null
+            }
+            export type TestApiSimpleResponseFailure = TestApiSimpleResponse & {
+              "_type": "Failure"
+              t: ReferencedType
+            }
+            export type TestApiSimpleResponseOk = TestApiSimpleResponse & NestedSomeInterface & {
+              "_type": "Ok"
+              at: Dayjs | string
+            }
+            export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
             export type TestApiGetResult = {
               s: string
               ints: Array<number>

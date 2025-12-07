@@ -26,15 +26,23 @@ sealed interface TsType {
     val isNullable: Boolean
     val tsGenericParameters: Map<String, Inline>
 
-    fun inlineReference(
-        definedGenerics: Map<String, Inline> = emptyMap(),
-    ): Inline {
+    fun withGenerics(definedGenerics: Map<String, Inline> = emptyMap()): TsType {
+        val tsGenericParameters = tsGenericParameters.map { (name, existing) ->
+            name to (definedGenerics[name] ?: existing)
+        }.toMap()
+        return when (this) {
+            is Enum -> this
+            is Inline -> copy(tsGenericParameters = tsGenericParameters)
+            is Object -> copy(tsGenericParameters = tsGenericParameters)
+            is Union -> copy(tsGenericParameters = tsGenericParameters)
+        }
+    }
+
+    fun inlineReference(): Inline {
         return Inline(
             jvmQualifiedClassName = jvmQualifiedClassName,
             tsName = tsName,
-            tsGenericParameters = tsGenericParameters.map { (name, existing) ->
-                name to (definedGenerics[name] ?: existing)
-            }.toMap(),
+            tsGenericParameters = tsGenericParameters,
             isOptional = isOptional,
             isNullable = isNullable
         )
@@ -67,9 +75,8 @@ sealed interface TsType {
         val discriminatorField: String,
         val children: List<TsType> = emptyList(),
         val supertypes: List<TsType> = emptyList(),
-    ) : TsType {
         override val tsGenericParameters: Map<String, Inline> = emptyMap()
-    }
+    ) : TsType
 
     data class Enum(
         override val jvmQualifiedClassName: String,

@@ -90,8 +90,9 @@ class InheritanceTest {
 
         ts.assertContains(
             fragment = $$"""
-                export type InheritanceApiAnimalDog = {
+                export type InheritanceApiAnimalDog = InheritanceApiAnimal & {
                   "@class": "com.iodesystems.ts.InheritanceApi$Animal$Dog"
+                  woofs: number
                 }
             """.trimIndent(),
             why = "Dog should be emitted as a base type"
@@ -107,7 +108,7 @@ class InheritanceTest {
 
         ts.assertContains(
             fragment = """
-                export type InheritanceApiAnimalUnion = InheritanceApiAnimalCat | InheritanceApiAnimalDog
+                export type InheritanceApiAnimalUnion = InheritanceApiAnimal & (InheritanceApiAnimalCat | InheritanceApiAnimalDog)
             """.trimIndent(),
             why = "InheritanceApiAnimalUnion"
         )
@@ -116,7 +117,6 @@ class InheritanceTest {
             fragment = """
              export type InheritanceApiAnimal = InheritanceApiLivingThing & {
                philum: string
-               alive: boolean
              }
             """.trimIndent(),
             why = "InheritanceApiAnimal"
@@ -127,6 +127,16 @@ class InheritanceTest {
                   getAnimal(): Promise<InheritanceApiAnimalUnion> {
             """.trimIndent(),
             why = "Method signature"
+        )
+
+        ts.assertContains(
+            fragment = $$"""
+               export type InheritanceApiAnimalCat = InheritanceApiAnimal & {
+                 "@class": "com.iodesystems.ts.InheritanceApi$Animal$Cat"
+                 meows: number
+               }
+            """.trimIndent(),
+            why = "Union children should inherit the interface of their Union intersection."
         )
     }
 }

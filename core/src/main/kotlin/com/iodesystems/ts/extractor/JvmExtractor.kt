@@ -37,13 +37,8 @@ data class JvmExtractor(
             scan = scan,
             jsonAdapter = jsonAdapter,
         )
-        // Use context-backed collections to avoid behavior changes while simplifying access
         val references = ctx.references
         val types = ctx.types
-
-        fun addType(type: TsType) = ctx.addType(type)
-
-        // All caches and progress tracking are now carried by RegistrationContext
 
         val apis = registry.apis.mapNotNull { api ->
             val apiCi = scan.getClassInfo(api.controllerFqn)
@@ -70,9 +65,6 @@ data class JvmExtractor(
 
                 // Derive a method-scoped context to attribute method references
                 val methodCtx = apiCtx.copy(currentMethodFqn = methodFqn)
-
-                fun TsType.typeRef(from: TsType): TsType =
-                    methodCtx.addTypeRef(from.tsName, this)
 
                 fun TsType.methodRef(): TsType =
                     methodCtx.addMethodRef(this)
@@ -101,7 +93,6 @@ data class JvmExtractor(
                 }
                 val rspSi = (mi.typeSignature?.resultType ?: mi.typeSignatureOrTypeDescriptor?.resultType)!!
                 val rspKi = kmFun?.returnType
-
 
                 val rsp = methodCtx.registerType(rspSi, rspKi)
                     .methodRef()
@@ -176,7 +167,10 @@ data class JvmExtractor(
         }
         return Extraction(
             apis = apis,
-            types = types.toList(),
+            types = run {
+                ctx.resolveAllRequested()
+                types.toList()
+            },
             typeReferences = references.toList()
         )
     }

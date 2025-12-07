@@ -3,6 +3,8 @@
 package com.iodesystems.ts.extractor
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.iodesystems.ts.Config
+import com.iodesystems.ts.Scanner
 import com.iodesystems.ts.lib.Asserts.assertEq
 import com.iodesystems.ts.lib.Asserts.assertIsEmpty
 import com.iodesystems.ts.lib.Asserts.assertNonNull
@@ -10,8 +12,6 @@ import com.iodesystems.ts.lib.Asserts.assertSingle
 import com.iodesystems.ts.lib.Asserts.assertSingleKey
 import com.iodesystems.ts.lib.Asserts.assertType
 import com.iodesystems.ts.lib.Asserts.toJson
-import com.iodesystems.ts.Config
-import com.iodesystems.ts.Scanner
 import com.iodesystems.ts.lib.Tree
 import com.iodesystems.ts.model.TsRef
 import com.iodesystems.ts.model.TsType
@@ -472,6 +472,138 @@ class ExtractorTest {
     @Test
     fun typeUnions() {
         val extraction = extract<Unions>()
-        println(extraction.toJson())
+
+        // One API with one method
+        val api = extraction.apis.assertSingle("There should be one api extracted")
+        val method = api.apiMethods.assertSingle("There should be a single method")
+
+        // Find the union type and verify its structure
+        val union = extraction.types
+            .firstOrNull { it.tsName == "ExtractorTestUnionsUnionUnion" }
+            .assertNonNull("The union alias type should be generated with expected name")
+            .assertType<TsType.Union>("The union alias should be a TsType.Union")
+
+        // Request/Response should reference the union alias (non-optional/non-nullable)
+        method.requestBodyType.assertNonNull("There should be a request body type")
+            .let { rb ->
+                rb.tsName.assertEq(union.tsName, "Request should be the union alias")
+                rb.isOptional.assertEq(false, "Request union should not be optional")
+                rb.isNullable.assertEq(false, "Request union should not be nullable")
+            }
+        method.responseBodyType.assertNonNull("There should be a response body type")
+            .let { rsp ->
+                rsp.tsName.assertEq(union.tsName, "Response should be the union alias")
+                rsp.isOptional.assertEq(false, "Response union should not be optional")
+                rsp.isNullable.assertEq(false, "Response union should not be nullable")
+            }
+
+        // Union should list two children by their concrete aliases
+        union.children.size.assertEq(2, "Union should have 2 children")
+        val childNames = union.children.map { it.tsName }.sorted()
+        childNames.assertEq(
+            listOf("ExtractorTestUnionsUnionOk", "ExtractorTestUnionsUnionUhoh"),
+            "Union children should be Ok and Uhoh"
+        )
+
+        // For each child there should be an object alias; for bare variants, only the discriminator field exists
+        val discriminator = union.discriminatorField
+        listOf("ExtractorTestUnionsUnionOk" to "Ok", "ExtractorTestUnionsUnionUhoh" to "Uhoh").forEach { (alias, discVal) ->
+            val obj = extraction.types.firstOrNull { it.tsName == alias }
+                .assertNonNull("Expected child object '$alias'")
+                .assertType<TsType.Object>("Child alias should be an object type")
+            val field = obj.fields[discriminator].assertNonNull("Discriminator field should exist on '$alias'")
+            field.optional.assertEq(false, "Discriminator should not be optional on '$alias'")
+            field.nullable.assertEq(false, "Discriminator should not be nullable on '$alias'")
+            field.type.tsName.assertEq("\"$discVal\"", "Discriminator literal should match child simple name for '$alias'")
+        }
     }
+
+    @RequestMapping
+    @RestController
+    class UnionWithFields {
+
+        @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
+        sealed interface Union {
+            data object Ok : Union {
+                val ok = true
+            }
+
+            data class Uhoh(
+                val error: String? = "uhoh"
+            ) : Union
+        }
+
+        @PostMapping
+        fun post(
+            @RequestBody
+            req: Union
+        ): Union = error("test")
+    }
+
+    @Test
+    fun unionsWithFields() {
+        val extraction = extract<UnionWithFields>()
+
+        val api = extraction.apis.assertSingle("There should be one api extracted")
+        val method = api.apiMethods.assertSingle("There should be a single method")
+
+        // Union alias and its children
+        val union = extraction.types
+            .firstOrNull { it.tsName == "ExtractorTestUnionWithFieldsUnionUnion" }
+            .assertNonNull("The union alias type should be generated with expected name")
+            .assertType<TsType.Union>("The union alias should be a TsType.Union")
+
+        // Method types should reference the union alias
+        method.requestBodyType.assertNonNull("There should be a request body type")
+            .let { rb ->
+                rb.tsName.assertEq(union.tsName, "Request should be the union alias")
+                rb.isOptional.assertEq(false, "Request union should not be optional")
+                rb.isNullable.assertEq(false, "Request union should not be nullable")
+            }
+        method.responseBodyType.assertNonNull("There should be a response body type")
+            .let { rsp ->
+                rsp.tsName.assertEq(union.tsName, "Response should be the union alias")
+                rsp.isOptional.assertEq(false, "Response union should not be optional")
+                rsp.isNullable.assertEq(false, "Response union should not be nullable")
+            }
+
+        union.children.size.assertEq(2, "Union should have 2 children")
+        val childNames = union.children.map { it.tsName }.sorted()
+        childNames.assertEq(
+            listOf("ExtractorTestUnionWithFieldsUnionOk", "ExtractorTestUnionWithFieldsUnionUhoh"),
+            "Union children should be Ok and Uhoh"
+        )
+
+        // Children should include both discriminator and declared fields
+        val discriminator = union.discriminatorField
+        // Ok: has val ok = true
+        run {
+            val obj = extraction.types.firstOrNull { it.tsName == "ExtractorTestUnionWithFieldsUnionOk" }
+                .assertNonNull("Expected child object 'ExtractorTestUnionWithFieldsUnionOk'")
+                .assertType<TsType.Object>("Child alias should be an object type")
+            val disc = obj.fields[discriminator].assertNonNull("Discriminator field should exist on Ok")
+            disc.optional.assertEq(false, "Discriminator should not be optional on Ok")
+            disc.nullable.assertEq(false, "Discriminator should not be nullable on Ok")
+            disc.type.tsName.assertEq("\"Ok\"", "Discriminator literal should be 'Ok'")
+            val okField = obj.fields["ok"].assertNonNull("Ok should contain 'ok' field")
+            okField.optional.assertEq(false, "ok should not be optional")
+            okField.nullable.assertEq(false, "ok should not be nullable")
+            okField.type.tsName.assertEq("boolean", "ok should be boolean")
+        }
+        // Uhoh: has val error: String? = "uhoh"
+        run {
+            val obj = extraction.types.firstOrNull { it.tsName == "ExtractorTestUnionWithFieldsUnionUhoh" }
+                .assertNonNull("Expected child object 'ExtractorTestUnionWithFieldsUnionUhoh'")
+                .assertType<TsType.Object>("Child alias should be an object type")
+            val disc = obj.fields[discriminator].assertNonNull("Discriminator field should exist on Uhoh")
+            disc.optional.assertEq(false, "Discriminator should not be optional on Uhoh")
+            disc.nullable.assertEq(false, "Discriminator should not be nullable on Uhoh")
+            disc.type.tsName.assertEq("\"Uhoh\"", "Discriminator literal should be 'Uhoh'")
+            val err = obj.fields["error"].assertNonNull("Uhoh should contain 'error' field")
+            err.optional.assertEq(true, "error should be optional due to default")
+            err.nullable.assertEq(true, "error should be nullable by type")
+            err.type.tsName.assertEq("string", "error should be string type")
+        }
+    }
+
 }

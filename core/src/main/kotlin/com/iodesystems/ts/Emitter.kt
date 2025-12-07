@@ -232,10 +232,12 @@ class Emitter(
                         o.write(" & ")
                     }
                     o.write("{\n")
+                    val discriminatorKey = type.discriminator?.first
                     type.discriminator?.let { (key, value) ->
                         o.write("  \"${key}\": \"$value\"\n")
                     }
                     type.fields.forEach { (field, f) ->
+                        if (discriminatorKey != null && field == discriminatorKey) return@forEach
                         o.write("  ${fieldName(field)}")
                         if (f.optional) {
                             o.write("?")

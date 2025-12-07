@@ -153,6 +153,118 @@ Out of the box, the generator looks for Spring MVC/Web annotations and extracts 
   - Outputs are written to `samples/spring/src/main/ui/gen/` (e.g., `api.ts`, `api-lib.ts`, `api-types.ts` depending on configuration).
   - You can explore the sample’s `build.gradle.kts` for a concrete plugin configuration.
 
+## Kitchen Sink Example
+
+Below is a compact Spring controller showcasing many supported features (generics, nested types, unions, path/query params, optional/nullable, lists, maps). This exact class is used by the tests (`EmitterTest#kitchenSink`).
+
+```kotlin
+@RestController
+@RequestMapping
+class KitchenSink {
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
+    sealed interface Union {
+        data object Ok : Union
+        data object Uhoh : Union
+    }
+
+    interface IContainer<Q> { val item: Q }
+    open class Container<T>(override val item: T) : IContainer<T>
+    class Request<A, B>(item: A, val items: List<B>) : Container<A>(item)
+    data class Other(val value: String)
+
+    @PostMapping
+    fun post(@RequestBody req: Map<String, Request<String, Int>>): Union = error("test")
+
+    data object Get {
+        data class Response(val items: List<String> = emptyList())
+    }
+
+    @GetMapping
+    fun get(): List<Get.Response?> = error("test")
+
+    @GetMapping("/{id}")
+    fun path(@PathVariable id: Long) {}
+
+    data class SearchQuery(
+        val q: String,
+        @RequestParam(required = false) val limit: Int?
+    )
+
+    @GetMapping("/search")
+    fun search(@RequestParam("q") q: String, @RequestParam(required = false) limit: Int?): List<Int> = error("test")
+
+    @PostMapping("/optional")
+    fun optional(@RequestBody req: Other?) {}
+}
+```
+
+Generated TypeScript (abridged to show types and API class; helper lib omitted):
+
+```ts
+export type EmitterTestKitchenSinkIContainer<Q> = {
+  item: Q
+}
+export type EmitterTestKitchenSinkContainer<T> = EmitterTestKitchenSinkIContainer<T> & {
+  item: T
+}
+export type EmitterTestKitchenSinkRequest<A,B> = EmitterTestKitchenSinkContainer<A> & {
+  items: Array<B>
+  item: A
+}
+export type EmitterTestKitchenSinkUnionOk = {
+  "@type": "Ok"
+}
+export type EmitterTestKitchenSinkUnionUhoh = {
+  "@type": "Uhoh"
+}
+export type EmitterTestKitchenSinkUnionUnion = EmitterTestKitchenSinkUnionOk | EmitterTestKitchenSinkUnionUhoh
+export type EmitterTestKitchenSinkGetResponse = {
+  items?: Array<string> | undefined
+}
+export type EmitterTestKitchenSinkSearchQuery = {
+  q: string
+  limit?: number | null | undefined
+}
+export type EmitterTestKitchenSinkOther = {
+  value: string
+}
+export class EmitterTestKitchenSink {
+  constructor(private opts: ApiOptions = {}) {}
+  post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnionUnion> {
+    return fetchInternal(this.opts, "/", {
+      method: "POST",
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(req)
+    }).then(r=>r.json())
+  }
+  get(): Promise<Array<EmitterTestKitchenSinkGetResponse | null>> {
+    return fetchInternal(this.opts, "/", {
+      method: "GET"
+    }).then(r=>r.json())
+  }
+  path(path: { id: string | number }): Promise<void> {
+    return fetchInternal(this.opts, "/{id}".replace("{id}", String(path.id)), {
+      method: "GET"
+    }).then(r=>{})
+  }
+  search(query: EmitterTestKitchenSinkSearchQuery): Promise<Array<number>> {
+    return fetchInternal(this.opts, flattenQueryParams("/search", query, null), {
+      method: "GET"
+    }).then(r=>r.json())
+  }
+  optional(req: EmitterTestKitchenSinkOther | null): Promise<void> {
+    return fetchInternal(this.opts, "/optional", {
+      method: "POST",
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(req)
+    }).then(r=>{})
+  }
+}
+```
+
+Note: In single-file mode, a small helper library (`ApiOptions`, `fetchInternal`, `flattenQueryParams`) is emitted at the top of `api.ts`. For brevity it’s omitted here.
+
 ## Building
 
 ```bash

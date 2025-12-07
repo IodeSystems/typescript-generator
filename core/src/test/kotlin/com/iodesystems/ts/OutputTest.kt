@@ -94,7 +94,7 @@ class OutputTest {
         )
 
         unified.assertContains(
-            fragment = "export type OutputApiDUnionTestingUnion = OutputApiDUnionTestingEr | OutputApiDUnionTestingOk",
+            fragment = "export type OutputApiDUnionTestingUnion = OutputApiDUnionTesting & (OutputApiDUnionTestingEr | OutputApiDUnionTestingOk)",
             why = "api.ts should render unions correctly"
         )
 
