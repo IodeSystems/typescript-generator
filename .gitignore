@@ -10,3 +10,6 @@
 
 .env
 node_modules
+samples/spring/build
+samples/spring/buildSrc/build
+samples/spring/node_modules
