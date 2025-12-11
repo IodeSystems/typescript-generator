@@ -16,13 +16,13 @@ dependencies {
 gradlePlugin {
     website = "https://github.com/IodeSystems/typescript-generator"
     vcsUrl = website
-    description = project.description
     plugins {
         create("typescriptGenerator") {
             id = "com.iodesystems.typescript-generator"
             implementationClass = "com.iodesystems.ts.TypeScriptGeneratorPlugin"
-            tags.addAll(listOf("typescript", "codegen", "typescript-generator"))
             displayName = "Typescript Generator Gradle Plugin"
+            description = project.description
+            tags.addAll(listOf("typescript", "codegen", "typescript-generator"))
         }
     }
 }
