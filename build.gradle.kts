@@ -93,8 +93,10 @@ subprojects {
             }
         }
     }
-    val signingTasks = tasks.withType<Sign>()
-    tasks.withType<AbstractPublishToMaven>().configureEach {
-        dependsOn(signingTasks)
+    if (!project.hasProperty("skip.signing")) {
+        val signingTasks = tasks.withType<Sign>()
+        tasks.withType<AbstractPublishToMaven>().configureEach {
+            dependsOn(signingTasks)
+        }
     }
 }
