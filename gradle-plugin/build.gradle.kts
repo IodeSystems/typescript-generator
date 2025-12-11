@@ -21,7 +21,9 @@ gradlePlugin {
             id = "com.iodesystems.typescript-generator"
             implementationClass = "com.iodesystems.ts.TypeScriptGeneratorPlugin"
             displayName = "Typescript Generator Gradle Plugin"
-            description = project.description
+            description = """
+                Generates Typescript interfaces from JVM classes.
+            """.trimIndent()
             tags.addAll(listOf("typescript", "codegen", "typescript-generator"))
         }
     }
