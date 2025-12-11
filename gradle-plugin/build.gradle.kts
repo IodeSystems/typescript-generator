@@ -26,3 +26,7 @@ gradlePlugin {
         }
     }
 }
+
+tasks.publishPlugins {
+    mustRunAfter(tasks.publish)
+}
