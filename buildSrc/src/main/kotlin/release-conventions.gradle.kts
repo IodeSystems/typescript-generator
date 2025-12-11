@@ -100,7 +100,7 @@ tasks.register("releasePrepareNextDevelopmentIteration") {
         val oldVersion = version
         val newVersion = Release.generateVersion(version, "dev", overrideVersion)
         Release.writeVersion(newVersion, oldVersion)
-        "git add build.gradle.kts".bash()
+        "git add .".bash()
         "git commit -m 'Prepare next development iteration: $newVersion'".bash()
         "git push".bash()
     }
