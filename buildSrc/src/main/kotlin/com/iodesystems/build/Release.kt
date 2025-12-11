@@ -40,5 +40,8 @@ object Release {
             }.joinToString("\n")
         }.let { newLines -> sampleVersions.writeText(newLines) }
 
+        // We need to update the documentation:
+        val readme = File("README.md")
+        readme.writeText(readme.readText().replace(oldVersion, newVersion))
     }
 }
