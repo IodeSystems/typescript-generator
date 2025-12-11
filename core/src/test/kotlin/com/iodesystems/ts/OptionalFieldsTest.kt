@@ -38,7 +38,7 @@ class OptionalFieldsTest {
 
     @Test
     fun testOptionalFields() {
-        val em = emitter<OptionalFields>()
+        val em = emitter(OptionalFields::class)
         em.extraction.types.let { types ->
 
             types.firstOrNull { t ->

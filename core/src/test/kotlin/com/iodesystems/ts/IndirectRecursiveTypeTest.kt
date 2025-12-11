@@ -6,7 +6,6 @@ import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import kotlin.test.Ignore
 import kotlin.test.Test
 
 @RestController
@@ -29,7 +28,7 @@ class IndirectRecursiveTypeTest {
 
     @Test
     fun indirectRecursiveShape() {
-        val em = emitter<IndirectRecursiveApi>()
+        val em = emitter(IndirectRecursiveApi::class)
         val ts = em.ts().content()
 
         ts.assertContains(

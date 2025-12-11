@@ -1,6 +1,7 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.*
 import java.io.File
@@ -252,9 +253,8 @@ class OutputTest {
     @Test
     fun splitTypesSimpleOutputTest() {
         // Simple mode with split types enabled (no groups)
-        TypeScriptGenerator.build { b ->
-            b
-                .cleanOutputDir()
+        val emitter = emitter {
+            cleanOutputDir()
                 .emitLibAsSeparateFile()
                 .typesFileName("api-types.ts")
                 .includeApi<OutputApiD>()
@@ -263,7 +263,8 @@ class OutputTest {
                 .mappedType(LocalDate::class, "string")
                 .mappedType(LocalTime::class, "string")
                 .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
-        }.generate().write()
+        }
+        emitter.ts().write()
 
         val sDir = File("./build/test/output-test/split-types-simple")
         val sLib = File(sDir, "api-lib.ts")

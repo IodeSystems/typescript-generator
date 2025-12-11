@@ -36,7 +36,7 @@ class QueryParamsTest {
 
     @Test
     fun testQueryParamsEmission() {
-        val em = emitter<QueryParamsController>()
+        val em = emitter(QueryParamsController::class)
         val content = em.ts().content()
         content.assertContains(
             """

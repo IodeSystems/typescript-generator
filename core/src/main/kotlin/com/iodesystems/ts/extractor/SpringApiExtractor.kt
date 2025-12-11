@@ -43,8 +43,9 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                             // Find body parameter index if present
                             val bodyIdx =
                                 mi.parameterInfo.indexOfFirst { it.getAnnotationInfo(RequestBody::class.java) != null }
-                            if ((http == TsHttpMethod.POST || http == TsHttpMethod.PUT || http == TsHttpMethod.PATCH) && bodyIdx == -1) {
-                                throw IllegalStateException("HTTP $http method '${controllerInfo.name}.${mi.name}' must declare a @RequestBody; empty body for $http is not allowed.")
+                            // New rule: Body is allowed for non-GET methods, but MUST NOT be present for GET
+                            if ((http == TsHttpMethod.GET) && bodyIdx != -1) {
+                                throw IllegalStateException("HTTP $http method '${controllerInfo.name}.${mi.name}' must not declare a  @RequestBody.")
                             }
 
                             method(mi.name) {
@@ -52,6 +53,7 @@ class SpringApiExtractor(val config: Config) : ApiExtractor {
                                 path(methodPath)
                                 if (bodyIdx >= 0) body(bodyIdx)
 
+                                log.info("ApiMethod found: ${controllerInfo.name}#${mi.name}")
                                 // Map @RequestParam to Query params, and @PathVariable to Path params
                                 val seenQueryNames = HashSet<String>()
                                 val seenPathNames = HashSet<String>()

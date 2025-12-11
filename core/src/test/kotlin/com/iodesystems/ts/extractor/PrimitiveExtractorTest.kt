@@ -120,9 +120,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("setString response missing")
                 .assertType<TsType.Inline>("setString should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Set<T>", "Kotlin Set should be Set<T>")
-                    t.tsGenericParameters["T"].assertNonNull("Set<T> missing T")
-                        .let { el -> el.tsName.assertEq("string", "Set<String> should be string") }
+                    t.tsName.assertEq("Array<T>", "Kotlin Set should be Array<T>")
+                    t.tsGenericParameters["T"].assertNonNull("Array<T> missing T")
+                        .let { el -> el.tsName.assertEq("string", "Array<String> should be string") }
                 }
         }
 
@@ -201,9 +201,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("setString response missing")
                 .assertType<TsType.Inline>("setString should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Set<T>", "Java Set should be Set<T>")
-                    t.tsGenericParameters["T"].assertNonNull("Set<T> missing T")
-                        .let { el -> el.tsName.assertEq("string", "Set<String> should be string") }
+                    t.tsName.assertEq("Array<T>", "Java Set should be Set<T>")
+                    t.tsGenericParameters["T"].assertNonNull("Array<T> missing T")
+                        .let { el -> el.tsName.assertEq("string", "Array<String> should be string") }
                 }
         }
 

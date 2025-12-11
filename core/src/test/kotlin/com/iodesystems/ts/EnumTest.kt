@@ -27,7 +27,7 @@ class EnumApi {
 class EnumTest {
     @Test
     fun emitsEnumsAsStringUnionLiterals() {
-        val em = emitter<EnumApi> { outputDirectory("./tmp") }
+        val em = emitter(EnumApi::class) { outputDirectory("./tmp") }
         val out = em.ts().content()
 
         // The object type should reference the simple enum name

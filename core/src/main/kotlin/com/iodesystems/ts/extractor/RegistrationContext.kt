@@ -2,18 +2,15 @@ package com.iodesystems.ts.extractor
 
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.adapter.JsonAdapter
+import com.iodesystems.ts.lib.Log.debug
+import com.iodesystems.ts.lib.Log.logger
 import com.iodesystems.ts.lib.Strings.stripPrefix
 import com.iodesystems.ts.model.TsField
 import com.iodesystems.ts.model.TsRef
 import com.iodesystems.ts.model.TsType
 import io.github.classgraph.*
 import kotlinx.metadata.*
-import java.math.BigDecimal
-import java.math.BigInteger
-import java.util.UUID
-import kotlin.collections.ArrayDeque
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
  * A composable context that carries extractor state while registering and walking types.
@@ -25,63 +22,90 @@ data class RegistrationContext(
     val config: Config,
     val scan: ScanResult,
     val jsonAdapter: JsonAdapter,
-    // Mutable extraction state
     val types: MutableSet<TsType> = mutableSetOf(),
     val references: MutableSet<TsRef> = mutableSetOf(),
-    // Caches for deduplication and cycle handling
     val fqcnCache: MutableMap<String, TsType> = mutableMapOf(),
     val inProgress: MutableSet<HierarchicalTypeSignature> = mutableSetOf(),
-    // Internal node graph for two-phase resolution
     val nodeByFqcn: MutableMap<String, TsNode> = mutableMapOf(),
     val deps: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     val revDeps: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     val todo: ArrayDeque<String> = ArrayDeque(),
-    val queued: MutableSet<String> = mutableSetOf(),
-    // Optional focus while descending
     val currentApiBaseName: String? = null,
     val currentMethodFqn: String? = null,
 ) {
+    private val log = logger()
+    private val diag = config.diagnosticLogging
 
-    // Resolver entry-point. Currently a no-op to keep behavior unchanged until lazy path is flipped on.
+    private fun diagnostic() {
+        if (!diag || !log.isInfoEnabled) return
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+        log.info("[extract] start: todo=${todo.size}, types=${types.size}, refs=${references.size}, usedMemMb=${usedMb}")
+    }
+
+    // Resolver entry-point. Processes enqueued JVM classes into TsTypes lazily.
     fun resolveAllRequested() {
-        // Minimal pass: attempt to process enqueued nodes in a stable order.
-        // Current behavior remains eager; nodes mirror already-built TsTypes.
-        // This loop is scaffolding for a future Kahn-like resolver.
         val seen = mutableSetOf<String>()
-        var progress: Boolean
-        var iterations = 0
-        do {
-            iterations++
-            progress = false
-            val size = todo.size
-            var i = 0
-            while (i < size) {
-                val fqcn = todo.removeFirstOrNull() ?: break
-                // Mark as no longer queued since we've popped it
-                queued.remove(fqcn)
-                if (!seen.add(fqcn)) {
-                    i++
-                    continue
-                }
-                // If dependencies are recorded, ensure they exist in node map; otherwise requeue
-                val d = deps[fqcn] ?: emptySet()
-                if (d.any { it !in nodeByFqcn.keys }) {
-                    // Not ready; requeue for a later pass
-                    if (queued.add(fqcn)) todo.addLast(fqcn)
-                    i++
-                    continue
-                }
-                // Node considered processed for now
-                progress = true
-                i++
+        var processed = 0
+        val startNs = System.nanoTime()
+        diagnostic()
+        while (true) {
+            val fqcn = todo.removeFirstOrNull() ?: break
+            if (!seen.add(fqcn)) continue
+            // If already materialized as non-inline, skip
+            fqcnCache[fqcn]?.let { existing -> if (existing !is TsType.Inline) continue }
+            // Skip well-known collection interfaces which are always inlined
+            if (TypeShim.isCollectionFqcn(fqcn)) continue
+            // Obtain ClassInfo and build the object type
+            val typeCi = try {
+                scan.getClassInfo(fqcn)
+            } catch (_: Throwable) {
+                null
+            } ?: continue
+
+            val shim = TypeShim.forSignature(typeCi.typeSignatureOrTypeDescriptor)
+
+            // Use current node state if present for flags; default to false
+            val node = nodeByFqcn[fqcn]
+            val isOptional = (node as? NodeObject)?.isOptional ?: false
+            val isNullable = (node as? NodeObject)?.isNullable ?: false
+
+            val built = buildObjectType(
+                fqcn = fqcn,
+                isOptional = isOptional,
+                isNullable = isNullable,
+                discriminator = null,
+                shim = shim
+            )
+            addType(built)
+            // Any dependencies discovered during build are already enqueued via enqueueNode; loop continues
+            processed++
+            if (diag && log.isInfoEnabled) {
+                val tookMs = (System.nanoTime() - startNs) / 1_000_000
+                val rt = Runtime.getRuntime()
+                val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+                log.info("[extract] done: processed=${processed}, totalTypes=${types.size}, refs=${references.size}, todoRemaining=${todo.size}, tookMs=${tookMs}, usedMemMb=${usedMb}")
             }
-        } while (progress && iterations < 1000)
+        }
+        if (diag && log.isInfoEnabled) {
+            val tookMs = (System.nanoTime() - startNs) / 1_000_000
+            val rt = Runtime.getRuntime()
+            val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+            log.info("[extract] done: processed=${processed}, totalTypes=${types.size}, refs=${references.size}, todoRemaining=${todo.size}, tookMs=${tookMs}, usedMemMb=${usedMb}")
+        }
+    }
+
+    fun hasType(fqcn: String): Boolean = types.any { it.jvmQualifiedClassName == fqcn }
+    fun hasType(t: TsType): Boolean = when (t) {
+        is TsType.Inline -> false
+        else -> (types.any { it.jvmQualifiedClassName == t.jvmQualifiedClassName })
     }
 
     fun addType(t: TsType) {
-        // If an identical logical type (same fqcn and tsName) is already present, skip
-        if (types.any { it.tsName == t.tsName && it.jvmQualifiedClassName == t.jvmQualifiedClassName }) return
+        if (!config.includeType(t.jvmQualifiedClassName)) return
+        if (hasType(t)) return
         if (types.add(t)) {
+            log.info("Registering type: ${t.tsName} (${t.jvmQualifiedClassName})")
             // Check for alias collisions where the same tsName would refer to a different JVM type
             types.firstOrNull { existing ->
                 existing !== t && existing.tsName == t.tsName && existing.jvmQualifiedClassName != t.jvmQualifiedClassName
@@ -114,32 +138,28 @@ data class RegistrationContext(
     }
 
     fun <T : TsType> addMethodRef(toType: T): T {
-        if (toType is TsType.Inline) return toType
         val from = currentMethodFqn ?: return toType
-        // Dedupe method refs, avoid duplicates in the list
-        if (references.any { it.fromTsBaseName == from && it.toTsBaseName == toType.tsName && it.refType == TsRef.Type.METHOD }) {
-            return toType
-        }
-        references.add(
-            TsRef(
-                fromTsBaseName = from,
-                toTsBaseName = toType.tsName,
-                refType = TsRef.Type.METHOD
+        toType.nonGlobalRelatedTypes().forEach { toType ->
+            if (references.any { existing -> existing.fromTsBaseName == from && existing.toTsBaseName == toType.tsName && existing.refType == TsRef.Type.METHOD }) return@forEach
+            references.add(
+                TsRef(
+                    fromTsBaseName = from,
+                    toTsBaseName = toType.tsName,
+                    refType = TsRef.Type.METHOD
+                )
             )
-        )
+        }
         return toType
     }
 
-    // Convenience helpers for call sites
     fun TsType.typeRef(from: TsType): TsType = addTypeRef(from.tsName, this)
-    fun <T : TsType> T.methodRef(): T = addMethodRef(this)
-
-    // --- Helpers used by the built-in registerType implementation ---
-
-    private fun ClassInfo.tsName(generics: Map<String, TsType.Inline> = emptyMap()): String {
-        val name = config.customNaming(this.name.stripPrefix(this.packageName))
-        if (generics.isEmpty()) return name
-        return "$name<${generics.values.joinToString(",") { it.tsName }}>"
+    private fun TypeShim.tsName(
+        generics: Map<String, TsType.Inline> = emptyMap(),
+        typeSuffix: String = ""
+    ): String {
+        val name = config.customNaming(this.fqcn().stripPrefix(this.packageName()))
+        if (generics.isEmpty()) return name + typeSuffix
+        return "$name$typeSuffix<${generics.values.joinToString(",") { it.tsName }}>"
     }
 
     @OptIn(ExperimentalUuidApi::class)
@@ -150,17 +170,24 @@ data class RegistrationContext(
     ): TsType.Inline {
         val kType = kmType ?: kmTypeProjection?.type
         val isNullable = jsonAdapter.isNullable(signature, kType, emptyList()) ?: (kType?.isNullable ?: false)
+        quickType(
+            s = when (signature) {
+                is TypeArgument -> signature.typeSignature ?: signature
+                else -> signature
+            },
+            nullable = isNullable,
+            optional = false
+        )?.let { return it }
 
         fun inline(jvmName: String, tsName: String, params: Map<String, TsType.Inline> = emptyMap()): TsType.Inline =
             TsType.Inline(
                 jvmQualifiedClassName = jvmName,
                 tsName = tsName,
-                isOptional = false,
                 isNullable = isNullable,
                 tsGenericParameters = params
             )
 
-        fun shouldEnqueueGeneric(sig: HierarchicalTypeSignature?, km: KmType?): Boolean {
+        fun shouldEnqueueGeneric(sig: HierarchicalTypeSignature?): Boolean {
             if (sig == null) return false
             val core = when (sig) {
                 is TypeArgument -> sig.typeSignature
@@ -173,29 +200,17 @@ data class RegistrationContext(
                 optional = false
             ) == null
         }
-
-        // Fast path: attempt quickType for primitives and well-known JVM types
-        quickType(
-            s = when (signature) {
-                is TypeArgument -> signature.typeSignature ?: signature
-                else -> signature
-            },
-            nullable = isNullable,
-            optional = false
-        )?.let { return it }
-
         return when (signature) {
             is TypeParameter -> inline(signature.name, signature.name)
             is TypeVariableSignature -> inline(signature.name, signature.name)
             is TypeArgument -> inlineRef(signature.typeSignature, kType)
             is ClassTypeSignature, is ClassRefTypeSignature -> {
-                val shim = ClassShim.forSignature(signature)
+                val shim = TypeShim.forSignature(signature)
                 val fqcn = shim.fqcn()
 
                 // Collections and Maps as special inline forms with generics
-                val inline = when (fqcn) {
-                    "kotlin.collections.Map",
-                    "java.util.Map" -> {
+                val inline = when (TypeShim.collectionKindForFqcn(fqcn)) {
+                    TypeShim.Companion.CollectionKind.MAP -> {
                         val args = shim.getTypeArguments()
                         val kmArgs = kType?.arguments
                         val kT = args.getOrNull(0)
@@ -211,18 +226,16 @@ data class RegistrationContext(
                             )
                         )
                         // Enqueue key/value types if they are non-inline class types
-                        if (shouldEnqueueGeneric(kT, kKm)) {
+                        if (shouldEnqueueGeneric(kT)) {
                             val core = if (kT is TypeArgument) kT.typeSignature else kT
                             if (core is ClassTypeSignature || core is ClassRefTypeSignature) enqueueNode(
-                                ClassShim.forSignature(
-                                    core
-                                ).fqcn()
+                                TypeShim.forSignature(core).fqcn()
                             )
                         }
-                        if (shouldEnqueueGeneric(vT, vKm)) {
+                        if (shouldEnqueueGeneric(vT)) {
                             val core = if (vT is TypeArgument) vT.typeSignature else vT
                             if (core is ClassTypeSignature || core is ClassRefTypeSignature) enqueueNode(
-                                ClassShim.forSignature(
+                                TypeShim.forSignature(
                                     core
                                 ).fqcn()
                             )
@@ -230,19 +243,18 @@ data class RegistrationContext(
                         inl
                     }
 
-                    "java.util.Set",
-                    "kotlin.collections.Set" -> {
+                    TypeShim.Companion.CollectionKind.SET -> {
                         val arg = shim.getTypeArguments().firstOrNull()
                         val kmArg = kType?.arguments?.getOrNull(0)?.type
                         val inl = inline(
                             jvmName = fqcn,
-                            tsName = "Set<T>",
+                            tsName = if (config.setsAsArrays) "Array<T>" else "Set<T>",
                             params = if (arg != null) mapOf("T" to inlineRef(arg, kmArg)) else emptyMap()
                         )
-                        if (shouldEnqueueGeneric(arg, kmArg)) {
+                        if (shouldEnqueueGeneric(arg)) {
                             val core = if (arg is TypeArgument) arg.typeSignature else arg
                             if (core is ClassTypeSignature || core is ClassRefTypeSignature) enqueueNode(
-                                ClassShim.forSignature(
+                                TypeShim.forSignature(
                                     core
                                 ).fqcn()
                             )
@@ -250,8 +262,7 @@ data class RegistrationContext(
                         inl
                     }
 
-                    "java.util.List",
-                    "kotlin.collections.List" -> {
+                    TypeShim.Companion.CollectionKind.LIST -> {
                         val arg = shim.getTypeArguments().firstOrNull()
                         val kmArg = kType?.arguments?.getOrNull(0)?.type
                         val inl = inline(
@@ -259,10 +270,10 @@ data class RegistrationContext(
                             tsName = "Array<T>",
                             params = if (arg != null) mapOf("T" to inlineRef(arg, kmArg)) else emptyMap()
                         )
-                        if (shouldEnqueueGeneric(arg, kmArg)) {
+                        if (shouldEnqueueGeneric(arg)) {
                             val core = if (arg is TypeArgument) arg.typeSignature else arg
                             if (core is ClassTypeSignature || core is ClassRefTypeSignature) enqueueNode(
-                                ClassShim.forSignature(
+                                TypeShim.forSignature(
                                     core
                                 ).fqcn()
                             )
@@ -270,59 +281,26 @@ data class RegistrationContext(
                         inl
                     }
 
-                    else -> {
-                        null
-                    }
+                    else -> null
                 }
                 if (inline != null) return inline
 
                 // Primitive wrappers mapped directly when no generics
-                val direct = when (fqcn) {
-
-                    // Strings/characters
-                    UUID::class.java.name,
-                    Uuid::class.java.name,
-                    String::class.java.name,
-                    kotlin.String::class.qualifiedName,
-                    Character::class.java.name,
-                    kotlin.Char::class.qualifiedName -> "string"
-
-                    // Numbers
-                    BigDecimal::class.java.name,
-                    BigInteger::class.java.name,
-                    Short::class.java.name,
-                    Integer::class.java.name,
-                    Long::class.java.name,
-                    Double::class.java.name,
-                    Float::class.java.name,
-                    Byte::class.java.name,
-                    Number::class.java.name,
-                    kotlin.Short::class.qualifiedName,
-                    kotlin.Int::class.qualifiedName,
-                    kotlin.Long::class.qualifiedName,
-                    kotlin.Double::class.qualifiedName,
-                    kotlin.Float::class.qualifiedName,
-                    kotlin.Byte::class.qualifiedName,
-                    kotlin.Number::class.qualifiedName -> "number"
-
-                    // Booleans
-                    java.lang.Boolean::class.java.name,
-                    kotlin.Boolean::class.qualifiedName -> "boolean"
-
-                    else -> null
-                }
+                val direct = TypeShim.directTsForFqcnOrNull(fqcn)
                 if (direct != null) return inline(fqcn, direct)
 
                 // Try to obtain ClassInfo if available; ClassGraph may not attach it to ClassRefTypeSignature in some cases
                 val ciOrNull = when (signature) {
                     is ClassRefTypeSignature -> signature.classInfo ?: scan.getClassInfo(fqcn)
-                    is ClassTypeSignature -> ClassShim.forSignature(signature).getClassInfo()
+                    is ClassTypeSignature -> TypeShim.forSignature(signature).getClassInfo()
                     else -> null
                 }
 
                 // Prefer direct type arguments; for inner classes, ClassGraph encodes them in suffixTypeArguments
                 val args = shim.getTypeArguments().ifEmpty {
-                    shim.getSuffixTypeArguments().lastOrNull() ?: emptyList()
+                    shim.getSuffixTypeArguments()
+                        .lastOrNull()
+                        ?: emptyList()
                 }
                 val kmArgs = kType?.arguments
                 val generics = if (args.isNotEmpty()) {
@@ -335,7 +313,7 @@ data class RegistrationContext(
 
                 // For the display name, keep generic parameter symbols (e.g., <T>)
                 val displayGenerics = if (args.isNotEmpty()) {
-                    args.mapIndexed { idx, _ ->
+                    List(args.size) { idx ->
                         val name = ciOrNull?.typeSignature?.typeParameters?.getOrNull(idx)?.name ?: "T$idx"
                         name to TsType.Inline(
                             jvmQualifiedClassName = name,
@@ -346,15 +324,8 @@ data class RegistrationContext(
                         )
                     }.toMap()
                 } else emptyMap()
-
-                val tsDisplayName = if (ciOrNull != null) {
-                    ciOrNull.tsName(displayGenerics)
-                } else {
-                    // Fallback: simple name with generic placeholders when ClassInfo is unavailable
-                    val simple = fqcn.substringAfterLast('.')
-                    if (displayGenerics.isEmpty()) simple else simple + "<" + displayGenerics.keys.joinToString(",") + ">"
-                }
-
+                val tsDisplayName = shim.tsName(displayGenerics)
+                enqueueNode(fqcn)
                 inline(
                     jvmName = fqcn,
                     tsName = tsDisplayName,
@@ -367,6 +338,7 @@ data class RegistrationContext(
     }
 
     private fun enqueueNode(fqcn: String) {
+        if (!config.includeType(fqcn)) return
         // Do not enqueue if already fully registered as a non-inline TsType
         fqcnCache[fqcn]?.let { existing -> if (existing !is TsType.Inline) return }
         // Ensure a node exists for this fqcn
@@ -379,7 +351,12 @@ data class RegistrationContext(
             )
         }
         // Avoid adding duplicates to the work queue
-        if (queued.add(fqcn)) todo.addLast(fqcn)
+        if (!todo.contains(fqcn)) {
+            todo.addLast(fqcn)
+            if (diag && log.isDebugEnabled) {
+                log.debug("[extract] enqueue: fqcn=${fqcn}, todo=${todo.size}")
+            }
+        }
     }
 
     private fun addDep(fromFqcn: String, toFqcn: String) {
@@ -390,39 +367,30 @@ data class RegistrationContext(
 
     private fun buildObjectType(
         fqcn: String,
-        typeCi: ClassInfo,
-        isOptional: Boolean,
-        isNullable: Boolean,
-        k: KmType? = null,
+        shim: TypeShim,
+        isOptional: Boolean = false,
+        isNullable: Boolean = false,
         discriminator: Pair<String, String>? = null,
         suppressSupertypes: Boolean = false,
         suppressFields: Boolean = false,
         excludeFieldNames: Set<String> = emptySet(),
-        preferSuperReplaceFqcn: String? = null,
         preferSuperReplacement: TsType? = null,
     ): TsType.Object {
-        val generics = typeCi.typeSignature?.typeParameters?.let { defined ->
-            defined.map { param -> inlineRef(param) }
-        }?.associateBy { it.tsName } ?: emptyMap()
-
-        val superSigs =
-            (typeCi.typeSignatureOrTypeDescriptor?.let { it.superinterfaceSignatures + it.superclassSignature }
-                ?: emptyList())
-                .filterNotNull()
-
+        val typeCi = shim.getClassInfo()
+        val generics = shim.typeParameters().map { param -> inlineRef(param) }.associateBy { it.tsName }
+        val superSigs = shim.intersectionSignatures()
+        // Render-time supertypes should be light-weight to avoid recursion into union detection.
+        // Use inlineRef here and perform any deduplication/rewriting afterwards.
         val superTsRaw = if (suppressSupertypes) emptyList() else superSigs
-            .map { sig -> registerType(sig, null) }
-            .filter { st ->
-                when (st) {
-                    is TsType.Inline -> st.tsName != "any"
-                    else -> true
-                }
-            }
+            .map { sig -> inlineRef(sig) }
+            .filter { st -> st.tsName != "any" && config.includeType(st.jvmQualifiedClassName) }
             .map { st ->
-                if (preferSuperReplaceFqcn != null && preferSuperReplacement != null) {
-                    val targetUnionFqcn = preferSuperReplaceFqcn + "#Union"
+                if (preferSuperReplacement != null) {
+                    val targetUnionFqcn = "${preferSuperReplacement.jvmQualifiedClassName}#Union"
                     when (st.jvmQualifiedClassName) {
-                        preferSuperReplaceFqcn, targetUnionFqcn -> preferSuperReplacement
+                        preferSuperReplacement.jvmQualifiedClassName,
+                        targetUnionFqcn -> preferSuperReplacement
+
                         else -> st
                     }
                 } else st
@@ -444,14 +412,15 @@ data class RegistrationContext(
 
         val superTs = superTsRaw.filter { st ->
             val stFqcn = st.jvmQualifiedClassName
-            // Keep this supertype only if no other direct supertype already includes it transitively
-            !superTsRaw.any { other -> other !== st && allSuperFqcns(other).contains(stFqcn) }
+            config.includeType(stFqcn) &&
+                    // Keep this supertype only if no other direct supertype already includes it transitively
+                    !superTsRaw.any { other -> other !== st && allSuperFqcns(other).contains(stFqcn) }
         }
 
         // Early placeholder to break recursion cycles before walking fields
         val placeholder = TsType.Object(
             jvmQualifiedClassName = fqcn,
-            tsName = typeCi.tsName(generics),
+            tsName = shim.tsName(generics),
             tsGenericParameters = generics,
             isOptional = isOptional,
             isNullable = isNullable,
@@ -478,22 +447,22 @@ data class RegistrationContext(
         node.generics.clear()
         node.generics.putAll(generics)
 
-        val ctor = jsonAdapter.chooseJsonConstructor(typeCi, scan)
-        val ctorFields = (ctor?.parameterInfo?.map { f ->
-            jsonAdapter.resolveFieldInfoFromConstructorParameter(f)
-        }
+        val ctor = jsonAdapter.chooseJsonConstructor(typeCi!!, scan)
+        val ctorFields = (ctor?.parameterInfo?.map { f -> jsonAdapter.resolveFieldInfoFromConstructorParameter(f) }
             ?: emptyList())
         val setterFields = typeCi.methodInfo.filter { setter ->
             val n = setter.name
             val singleParam = setter.parameterInfo.size == 1
             val noParam = setter.parameterInfo.size == 0
-            if (n.startsWith("get") && n.length > 3 && noParam && n[3].isUpperCase()) true
+            if (!setter.isPublic) false
+            else if (n.startsWith("get") && n.length > 3 && noParam && n[3].isUpperCase()) true
             else if (n.startsWith("set") && n.length > 3 && singleParam && n[3].isUpperCase()) true
             else n.startsWith("is") && n.length > 2 && n[2].isUpperCase() && noParam
         }.map { setter -> jsonAdapter.resolveFieldInfoFromGetterOrSetter(setter) }
+
         val classFields = typeCi.fieldInfo.filter { f ->
             if (f.classInfo.name != typeCi.name) false
-            else if (f.isStatic || f.isSynthetic) false
+            else if (f.isStatic || f.isSynthetic || !f.isPublic) false
             else true // include non-public instance fields to capture @field: annotations
         }.map { f -> jsonAdapter.resolveFiledInfoFromField(f) }
 
@@ -512,8 +481,18 @@ data class RegistrationContext(
                     typeSig = r.type
                     allAnnotations += r.annotations
                 }
+
+                // If there is a private field, add its annotations:
+                typeCi.fieldInfo.filter {
+                    it.name == name
+                            && it.classInfo.name == typeCi.name
+                            && !it.isStatic && !it.isSynthetic && !it.isPublic
+                }.firstOrNull()?.let { field ->
+                    allAnnotations.addAll(field.annotationInfo)
+                }
+
                 val adapterRename = jsonAdapter.resolveRenameFromAnnotations(allAnnotations)
-                val fieldType = registerType(typeSig!!)
+                val fieldType = callsiteType(typeSig!!, null, null, allAnnotations)
                 Pair(
                     rename ?: adapterRename ?: name,
                     TsField(
@@ -539,22 +518,57 @@ data class RegistrationContext(
             fields = fields.filterKeys { it !in excludeFieldNames }
         }
 
-        // Remove fields that are already provided by supertypes
         if (fields.isNotEmpty() && superTs.isNotEmpty()) {
-            fun gatherSuperFields(t: TsType, acc: MutableSet<String>) {
-                when (t) {
-                    is TsType.Object -> {
-                        acc.addAll(t.fields.keys)
-                        t.supertypes.forEach { gatherSuperFields(it, acc) }
-                    }
+            // Compute inherited field names directly from JVM supertypes to avoid recursive type registration
+            val visited = mutableSetOf<String>()
+            fun collectInheritedFieldNames(sh: TypeShim, into: MutableSet<String>) {
+                val ci = sh.getClassInfo() ?: return
+                val fq = ci.name
+                if (!visited.add(fq)) return
 
-                    is TsType.Union -> t.supertypes.forEach { gatherSuperFields(it, acc) }
-                    else -> {}
+                // Constructor-selected fields
+                val ctor = jsonAdapter.chooseJsonConstructor(ci, scan)
+                val ctorFields = (ctor?.parameterInfo?.map { f ->
+                    jsonAdapter.resolveFieldInfoFromConstructorParameter(f)
+                } ?: emptyList())
+
+                // Getter/Setter-derived fields (include boolean isX)
+                val setterFields = ci.methodInfo.filter { setter ->
+                    val n = setter.name
+                    val singleParam = setter.parameterInfo.size == 1
+                    val noParam = setter.parameterInfo.size == 0
+                    if (!setter.isPublic) false
+                    else if (n.startsWith("get") && n.length > 3 && noParam && n[3].isUpperCase()) true
+                    else if (n.startsWith("set") && n.length > 3 && singleParam && n[3].isUpperCase()) true
+                    else n.startsWith("is") && n.length > 2 && n[2].isUpperCase() && noParam
+                }.map { setter -> jsonAdapter.resolveFieldInfoFromGetterOrSetter(setter) }
+
+                // Declared instance fields (allow non-public to capture @field: annotations)
+                val classFields = ci.fieldInfo.filter { f ->
+                    if (f.classInfo.name != ci.name) false
+                    else if (f.isStatic || f.isSynthetic || !f.isPublic) false
+                    else true
+                }.map { f -> jsonAdapter.resolveFiledInfoFromField(f) }
+
+                val names = (setterFields + classFields + ctorFields)
+                    .groupBy { it.name }
+                    .map { (name, resolved) ->
+                        // Apply adapter rename if present across any occurrences
+                        val allAnnotations = resolved.flatMap { it.annotations }
+                        val adapterRename = jsonAdapter.resolveRenameFromAnnotations(allAnnotations)
+                        adapterRename ?: name
+                    }
+                into.addAll(names)
+
+                // Recurse into their supertypes
+                sh.intersectionSignatures().forEach { s ->
+                    val next = TypeShim.forSignature(s)
+                    collectInheritedFieldNames(next, into)
                 }
             }
 
             val inherited = mutableSetOf<String>()
-            superTs.forEach { gatherSuperFields(it, inherited) }
+            superSigs.forEach { sig -> collectInheritedFieldNames(TypeShim.forSignature(sig), inherited) }
             if (inherited.isNotEmpty()) {
                 fields = fields.filterKeys { it !in inherited }
             }
@@ -579,24 +593,6 @@ data class RegistrationContext(
             if (ft !is TsType.Inline) enqueueNode(ft.jvmQualifiedClassName)
         }
 
-        val inheritedFields: Set<String> = run {
-            val seen = mutableSetOf<String>()
-            fun collectFields(t: TsType) {
-                when (t) {
-                    is TsType.Object -> {
-                        seen.addAll(t.fields.keys)
-                        t.supertypes.forEach { collectFields(it) }
-                    }
-
-                    else -> {}
-                }
-            }
-            superTs.forEach { collectFields(it) }
-            seen
-        }
-        val filteredFields: Map<String, TsField> =
-            if (inheritedFields.isEmpty()) fields else fields.filterKeys { it !in inheritedFields }
-
         // If discriminator context is provided, inject the discriminator literal field into the object
         val finalFields = if (discriminator != null) {
             val (discProp, discVal) = discriminator
@@ -611,12 +607,12 @@ data class RegistrationContext(
                 optional = false,
                 nullable = false
             )
-            filteredFields + (discProp to discField)
-        } else filteredFields
+            fields + (discProp to discField)
+        } else fields
 
         val objectType = TsType.Object(
             jvmQualifiedClassName = fqcn,
-            tsName = typeCi.tsName(generics),
+            tsName = shim.tsName(generics),
             tsGenericParameters = generics,
             isOptional = isOptional,
             isNullable = isNullable,
@@ -663,7 +659,10 @@ data class RegistrationContext(
                     "byte", "short", "int", "long", "float", "double" -> "number"
                     else -> error("Unsupported signature type: $s")
                 }
-                return TsType.Inline(
+
+                if (!config.includeType(s.type.name)) return null
+
+                TsType.Inline(
                     jvmQualifiedClassName = s.type.name,
                     tsName = tsType,
                     isOptional = optional,
@@ -673,17 +672,41 @@ data class RegistrationContext(
             }
 
             is ClassTypeSignature, is ClassRefTypeSignature -> {
-                val shim = ClassShim.forSignature(s)
+                val shim = TypeShim.forSignature(s)
                 val fqcnEarly = shim.fqcn()
-                config.mappedTypes[fqcnEarly]?.let { mapped ->
+                if (!config.includeType(fqcnEarly)) {
                     return TsType.Inline(
                         jvmQualifiedClassName = fqcnEarly,
-                        tsName = mapped,
-                        isOptional = optional,
-                        isNullable = nullable,
-                        tsGenericParameters = emptyMap()
+                        tsName = "unknown"
                     )
                 }
+                config.mappedTypes[fqcnEarly]?.let { mapped ->
+                    val generics = shim.typeParameters().associate {
+                        it.name to inlineRef(it)
+                    }
+
+                    if (hasType(fqcnEarly)) return TsType.Inline(
+                        jvmQualifiedClassName = fqcnEarly,
+                        tsName = shim.tsName(generics),
+                        tsGenericParameters = generics
+                    )
+                    val obj = TsType.Object(
+                        jvmQualifiedClassName = fqcnEarly,
+                        tsName = shim.tsName(generics),
+                        isOptional = optional,
+                        isNullable = nullable,
+                        tsGenericParameters = generics,
+                        supertypes = listOf(
+                            TsType.Inline(
+                                jvmQualifiedClassName = "#$mapped",
+                                tsName = mapped,
+                            )
+                        )
+                    )
+                    addType(obj)
+                    return obj.inlineReference()
+                }
+
                 // Built-in JVM types that map directly and never recurse
                 val direct = when (fqcnEarly) {
                     "kotlin.Unit", "java.lang.Void" -> "void"
@@ -692,7 +715,6 @@ data class RegistrationContext(
                     "java.lang.Character",
                     "kotlin.CharSequence",
                     "java.lang.String" -> "string"
-
 
                     "java.lang.Number",
                     "java.lang.Byte",
@@ -707,13 +729,15 @@ data class RegistrationContext(
                     else -> null
                 }
                 if (direct == null) null
-                else return TsType.Inline(
-                    jvmQualifiedClassName = fqcnEarly,
-                    tsName = direct,
-                    isOptional = optional,
-                    isNullable = nullable,
-                    tsGenericParameters = emptyMap()
-                )
+                else {
+                    TsType.Inline(
+                        jvmQualifiedClassName = fqcnEarly,
+                        tsName = direct,
+                        isOptional = optional,
+                        isNullable = nullable,
+                        tsGenericParameters = emptyMap()
+                    )
+                }
             }
 
             else -> {
@@ -724,153 +748,71 @@ data class RegistrationContext(
 
     fun registerType(
         s: HierarchicalTypeSignature,
-        k: KmType? = null,
-        kvp: KmValueParameter? = null,
-        sourceAnnotations: List<AnnotationInfo> = emptyList(),
         discriminator: Pair<String, String>? = null,
     ): TsType {
-        val isNullable = jsonAdapter.isNullable(s, k, sourceAnnotations) ?: k?.isNullable ?: false
-        val isOptional = jsonAdapter.isOptional(k, kvp, sourceAnnotations) ?: kvp?.declaresDefaultValue ?: false
+        val shim = TypeShim.forSignature(s)
         quickType(
             s = s,
-            nullable = isNullable,
-            optional = isOptional
+            nullable = false,
+            optional = false
         )?.let { return it }
-
-
-        fun inline(jvmName: String, tsName: String): TsType.Inline = TsType.Inline(
-            jvmQualifiedClassName = jvmName,
-            tsName = tsName,
-            isOptional = isOptional,
-            isNullable = isNullable,
-            tsGenericParameters = emptyMap()
-        )
-
-        val shim = ClassShim.forSignature(s)
-
+        val fqcn = shim.fqcn()
         val createdType: TsType = when (s) {
-            is TypeParameter -> inline(s.name, s.name)
-            is TypeVariableSignature -> inline(s.name, s.name)
-            is TypeArgument -> inlineRef(s.typeSignature, k)
-            is ClassTypeSignature, is ClassRefTypeSignature -> {
-                val fqcn = shim.fqcn()
-                val hasDirectArgs = shim.getTypeArguments().isNotEmpty()
-                val hasSuffixArgs = shim.getSuffixTypeArguments().lastOrNull()?.isNotEmpty() == true
-                val hasKArgs = k?.arguments?.isNotEmpty() == true
-                val needsReification = hasDirectArgs || hasSuffixArgs || hasKArgs
+            is TypeParameter -> TsType.Inline(s.name, s.name)
+            is TypeVariableSignature -> TsType.Inline(s.name, s.name)
+            is TypeArgument -> inlineRef(s.typeSignature)
+            is ClassTypeSignature, is ClassRefTypeSignature, is ArrayTypeSignature -> {
                 fqcnCache[fqcn]?.let { existing ->
-                    // If we've already materialized a Union for this FQCN, always reuse it to avoid recursion
-                    if (existing is TsType.Union) return existing
-                    if (!needsReification && existing !is TsType.Inline) return existing
+                    if (existing !is TsType.Inline) return existing
                 }
-                // Helper to decide if a generic argument should be enqueued (i.e., it is a class type, not an inline primitive/alias)
-                fun shouldEnqueueGeneric(sig: HierarchicalTypeSignature?, km: KmType?): Boolean {
-                    if (sig == null) return false
-                    val core = when (sig) {
-                        is TypeArgument -> sig.typeSignature
-                        else -> sig
-                    }
-                    // If quickType can handle it, it's inline (primitive/mapped/Unit/etc) → don't enqueue
-                    return quickType(
-                        s = core,
-                        nullable = false,
-                        optional = false
-                    ) == null
-                }
-
                 when (fqcn) {
                     "java.util.Map" -> {
-                        val ta = shim.getTypeArguments()
-                        val tka = k?.arguments
                         val inline = TsType.Inline(
                             jvmQualifiedClassName = fqcn,
                             tsName = "Record<K,V>",
-                            isOptional = false,
-                            isNullable = k?.isNullable ?: false,
                             tsGenericParameters = mapOf(
-                                "K" to inlineRef(ta[0], tka?.getOrNull(0)?.type),
-                                "V" to inlineRef(ta[1], tka?.getOrNull(1)?.type),
+                                "K" to TsType.Inline(
+                                    jvmQualifiedClassName = "#K",
+                                    tsName = "K",
+                                ),
+                                "V" to TsType.Inline(
+                                    jvmQualifiedClassName = "#V",
+                                    tsName = "V",
+                                )
                             )
                         )
-                        // Eagerly register K and V object types so they appear in types list
-                        ta.getOrNull(0)?.let { kSig ->
-                            val core = if (kSig is TypeArgument) kSig.typeSignature else kSig
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                registerType(core, tka?.getOrNull(0)?.type)
-                            }
-                        }
-                        ta.getOrNull(1)?.let { vSig ->
-                            val core = if (vSig is TypeArgument) vSig.typeSignature else vSig
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                registerType(core, tka?.getOrNull(1)?.type)
-                            }
-                        }
-                        // Enqueue key/value generic types when they are class types (non-inline)
-                        if (shouldEnqueueGeneric(ta.getOrNull(0), tka?.getOrNull(0)?.type)) {
-                            val kSig = ta[0]
-                            val core = if (kSig is TypeArgument) kSig.typeSignature else kSig
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                enqueueNode(ClassShim.forSignature(core).fqcn())
-                            }
-                        }
-                        if (shouldEnqueueGeneric(ta.getOrNull(1), tka?.getOrNull(1)?.type)) {
-                            val vSig = ta[1]
-                            val core = if (vSig is TypeArgument) vSig.typeSignature else vSig
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                enqueueNode(ClassShim.forSignature(core).fqcn())
-                            }
-                        }
-                        // Process newly enqueued work in this batch
-                        resolveAllRequested()
                         return inline
                     }
 
+                    "kotlin.Array",
                     "java.util.Set",
                     "java.util.List" -> {
-                        val ta = shim.getTypeArguments().first()
-                        val tka = if (k != null) k.arguments[0].type else null
-                        val underlying = if (fqcn.endsWith("Set")) "Set"
+                        val underlying = if (!config.setsAsArrays && fqcn.endsWith("Set")) "Set"
                         else "Array"
                         val inline = TsType.Inline(
                             jvmQualifiedClassName = fqcn,
                             tsName = "$underlying<T>",
-                            isOptional = false,
-                            isNullable = k?.isNullable ?: false,
-                            tsGenericParameters = mapOf("T" to inlineRef(ta, tka)),
+                            tsGenericParameters = mapOf(
+                                "T" to TsType.Inline(
+                                    jvmQualifiedClassName = "#T",
+                                    tsName = "T",
+                                )
+                            ),
                         )
-                        // Eagerly register the element object type so it appears in types list
-                        run {
-                            val core = if (ta is TypeArgument) ta.typeSignature else ta
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                registerType(core, tka)
-                            }
-                        }
-                        // Enqueue element type if it's a non-inline class type
-                        if (shouldEnqueueGeneric(ta, tka)) {
-                            val core = if (ta is TypeArgument) ta.typeSignature else ta
-                            if (core is ClassTypeSignature || core is ClassRefTypeSignature) {
-                                enqueueNode(ClassShim.forSignature(core).fqcn())
-                            }
-                        }
-                        // Process newly enqueued work in this batch
-                        resolveAllRequested()
                         return inline
                     }
                 }
 
-                val typeCi = shim.getClassInfo()
-                val ti = typeCi.typeSignatureOrTypeDescriptor
-
                 val type: TsType = run {
-                    if (typeCi.isEnum) {
+                    log.debug { "Registering type: $fqcn" }
+                    if (shim.isEnum()) {
                         val enumTs = TsType.Enum(
                             jvmQualifiedClassName = fqcn,
-                            tsName = typeCi.tsName(),
-                            isOptional = false,
-                            isNullable = false,
+                            tsName = shim.tsName(),
                             unionLiteral = jsonAdapter.enumSerializedTypeOrNull(
-                                typeCi.name,
-                                typeCi.enumConstants.map { it.name }
+                                scan,
+                                shim.fqcn(),
+                                shim.enumConstantNames()
                             ),
                         )
                         // Mirror into node graph for resolver bookkeeping
@@ -883,61 +825,53 @@ data class RegistrationContext(
                         )
                         enumTs
                     } else {
-                        val resolved = jsonAdapter.resolveDiscriminatedSubTypes(scan, typeCi)
+                        val resolved = jsonAdapter.resolveDiscriminatedSubTypes(scan, shim)
                         if (resolved != null) {
                             val discriminatorField = resolved.discriminatorProperty
-                            val baseGenerics = typeCi.typeSignature?.typeParameters?.let { defined ->
-                                defined.map { param -> inlineRef(param) }
-                            }?.associateBy { it.tsName } ?: emptyMap()
-
-                            // First, materialize the base object (no discriminator), so it gets emitted separately
+                            val baseGenerics =
+                                shim.typeParameters().map { param -> inlineRef(param) }.associateBy { it.tsName }
                             val baseObject = buildObjectType(
                                 fqcn = fqcn,
-                                typeCi = typeCi,
-                                isOptional = isOptional,
-                                isNullable = isNullable,
-                                k = k,
-                                discriminator = null,
+                                shim = shim
                             )
                             enqueueNode(fqcn)
                             addType(baseObject)
 
                             // Build children as concrete objects with discriminator literals
                             val children: List<TsType> = resolved.options.map { opt ->
-                                val ci = opt.classInfo
-                                val childFqcn = ci.name
                                 val childObj = buildObjectType(
-                                    fqcn = childFqcn,
-                                    typeCi = ci,
-                                    isOptional = false,
-                                    isNullable = false,
-                                    k = null,
+                                    fqcn = opt.shim.fqcn(),
                                     discriminator = discriminatorField to opt.discriminatorValue,
-                                    suppressSupertypes = false,
-                                    suppressFields = false,
-                                    preferSuperReplaceFqcn = fqcn,
                                     preferSuperReplacement = baseObject,
+                                    shim = opt.shim
                                 )
-                                enqueueNode(childFqcn)
+                                enqueueNode(opt.shim.fqcn())
                                 addType(childObj)
                                 // Track dependency of base on child
-                                addDep(fqcn, childFqcn)
+                                addDep(fqcn, opt.shim.fqcn())
                                 childObj
                             }
 
                             // Create a synthesized Union type with '<Base>Union' name under synthetic fqcn
-                            val unionFqcn = fqcn + "#Union"
-                            val unionTsName = typeCi.tsName(baseGenerics) + "Union"
+                            val unionFqcn = "$fqcn#Union"
+                            val unionTsName = shim.tsName(
+                                generics = baseGenerics,
+                                typeSuffix = "Union"
+                            )
                             val unionType = TsType.Union(
                                 jvmQualifiedClassName = unionFqcn,
                                 tsName = unionTsName,
-                                isOptional = isOptional,
-                                isNullable = isNullable,
+                                isOptional = false,
+                                isNullable = false,
                                 discriminatorField = discriminatorField,
                                 children = children,
                                 supertypes = listOf(baseObject),
                                 tsGenericParameters = baseGenerics
                             )
+
+                            children.forEach {
+                                addTypeRef(unionType.tsName, it)
+                            }
 
                             // Mirror union node
                             val unionNode = (nodeByFqcn[unionFqcn] as? NodeUnion) ?: run {
@@ -969,58 +903,28 @@ data class RegistrationContext(
 
                             // Propagate generics references back to union type (for cross-links)
                             baseGenerics.forEach { (_, v) -> v.typeRef(unionType) }
+
                             return@run unionType
                         }
 
                         // Regular object path via reusable builder
                         val objectType = buildObjectType(
                             fqcn = fqcn,
-                            typeCi = typeCi,
-                            isOptional = isOptional,
-                            isNullable = isNullable,
-                            k = k,
                             discriminator = discriminator,
+                            shim = shim
                         )
                         enqueueNode(fqcn)
                         addType(objectType)
-                        val directTypeArgs = shim.getTypeArguments()
-                        val constrainedGenerics = directTypeArgs.ifEmpty {
-                            (shim.getSuffixTypeArguments().lastOrNull() ?: emptyList())
-                        }
-                        val kTypeArgs = k?.arguments
-                        val typeParams = typeCi.typeSignature?.typeParameters ?: emptyList()
-                        val reifiedGenerics: Map<String, TsType.Inline>? = when {
-                            constrainedGenerics.isNotEmpty() && kTypeArgs != null && typeParams.size == constrainedGenerics.size ->
-                                typeParams.zip(constrainedGenerics.zip(kTypeArgs)).associate { t ->
-                                    val generic = t.first
-                                    val (constrained, kproj) = t.second
-                                    // Do not record method refs for generic parameter reification
-                                    generic.name to inlineRef(constrained, kmTypeProjection = kproj)
-                                }
-
-                            constrainedGenerics.isNotEmpty() ->
-                                typeParams.zip(constrainedGenerics).associate { (generic, constrained) ->
-                                    // Do not record method refs for generic parameter reification
-                                    generic.name to inlineRef(constrained)
-                                }
-
-                            else -> null
-                        }
-                        if (reifiedGenerics != null) {
-                            objectType.typeRef(objectType)
-                                .withGenerics(reifiedGenerics)
-                        } else objectType
+                        objectType
                     }
                 }
 
-                if (ti != null && type !is TsType.Enum) {
-                    (ti.superinterfaceSignatures + ti.superclassSignature)
-                        .filterNotNull()
-                        .map { sig ->
-                            val st = registerType(sig, null).typeRef(type)
+                if (type !is TsType.Enum) {
+                    shim.intersectionSignatures()
+                        .forEach { sig ->
+                            val st = registerType(sig).typeRef(type)
                             // Track deps in node graph
-                            addDep(shim.fqcn(), ClassShim.forSignature(sig).fqcn())
-                            st
+                            addDep(shim.fqcn(), st.jvmQualifiedClassName)
                         }
                 }
                 if (type !is TsType.Inline) fqcnCache[fqcn] = type
@@ -1029,7 +933,7 @@ data class RegistrationContext(
                 type
             }
 
-            else -> TODO()
+            else -> error("Unhandled HierarchicalTypeSignature: ${s.javaClass.name}")
         }
 
         when (createdType) {
@@ -1039,5 +943,51 @@ data class RegistrationContext(
             is TsType.Enum -> addType(createdType)
         }
         return createdType
+    }
+
+    /**
+     * Apply callsite metadata (nullable/optional + constrained generics) to a registered vanilla type.
+     */
+    fun callsiteType(
+        s: HierarchicalTypeSignature,
+        k: KmType? = null,
+        kvp: KmValueParameter? = null,
+        sourceAnnotations: List<AnnotationInfo> = emptyList(),
+    ): TsType {
+        val isNullable = jsonAdapter.isNullable(s, k, sourceAnnotations) ?: k?.isNullable ?: false
+        val isOptional = jsonAdapter.isOptional(k, kvp, sourceAnnotations) ?: kvp?.declaresDefaultValue ?: false
+
+        val shim = TypeShim.forSignature(s)
+        // Compute constrained generics from signature/k limits
+        val directTypeArgs = shim.getTypeArguments()
+        val constrainedGenerics = directTypeArgs.ifEmpty {
+            (shim.getSuffixTypeArguments().lastOrNull() ?: emptyList())
+        }
+        val kTypeArgs = k?.arguments
+        val constrainedList: List<TsType.Inline> = constrainedGenerics.mapIndexed { idx, constrained ->
+            val km = kTypeArgs?.getOrNull(idx)?.type
+            inlineRef(constrained, km)
+        }
+
+        // Determine the display generic tokens used in the base type's tsName (e.g., ["T"], ["K","V"], ["A","B"]).
+        fun displayGenericTokens(tsName: String): List<String> {
+            val lt = tsName.indexOf('<')
+            val gt = tsName.lastIndexOf('>')
+            if (lt == -1 || gt == -1 || gt <= lt) return emptyList()
+            val section = tsName.substring(lt + 1, gt)
+            return section.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        }
+
+        val base = quickType(s, isNullable, isOptional) ?: registerType(s)
+        val tokens = displayGenericTokens(base.tsName)
+        val reifiedGenerics: Map<String, TsType.Inline> = when {
+            constrainedList.isNotEmpty() && tokens.size == constrainedList.size ->
+                tokens.zip(constrainedList).associate { (token, inl) -> token to inl }
+
+            else -> emptyMap()
+        }
+        // If it's a quick primitive/alias, just generate inline with flags
+        val withGen = if (reifiedGenerics.isNotEmpty()) base.withGenerics(reifiedGenerics) else base
+        return withGen.inlineReference(optional = isOptional, nullable = isNullable)
     }
 }

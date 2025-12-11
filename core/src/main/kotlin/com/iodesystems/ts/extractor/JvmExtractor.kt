@@ -1,5 +1,6 @@
 package com.iodesystems.ts.extractor
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.adapter.DefaultSpringApiAdapter
 import com.iodesystems.ts.adapter.JacksonJsonAdapter
@@ -87,14 +88,14 @@ data class JvmExtractor(
                     val si = pi?.typeSignatureOrTypeDescriptor!!
                     val kvp = kmFun?.valueParameters?.getOrNull(idx)
                     val ki = kvp?.type
-                    methodCtx.registerType(si, ki, kvp, pi.annotationInfo)
+                    methodCtx.callsiteType(si, ki, kvp, pi.annotationInfo)
                         .methodRef()
                         .inlineReference()
                 }
                 val rspSi = (mi.typeSignature?.resultType ?: mi.typeSignatureOrTypeDescriptor?.resultType)!!
                 val rspKi = kmFun?.returnType
 
-                val rsp = methodCtx.registerType(rspSi, rspKi)
+                val rsp = methodCtx.callsiteType(rspSi, rspKi)
                     .methodRef()
                     .inlineReference()
 
@@ -105,7 +106,7 @@ data class JvmExtractor(
                     val si = pi.typeSignatureOrTypeDescriptor
                     val kvp = kmFun?.valueParameters?.getOrNull(p.index)
                     val ki = kvp?.type
-                    val ts = methodCtx.registerType(si, ki, kvp, pi.annotationInfo)
+                    val ts = methodCtx.callsiteType(si, ki, kvp, pi.annotationInfo)
                         .methodRef()
                     val kind = when (ts.tsName) {
                         "number" -> ApiMethod.PathParam.Type.NUMBER
@@ -126,7 +127,7 @@ data class JvmExtractor(
                         val si = pi.typeSignatureOrTypeDescriptor
                         val kvp = kmFun?.valueParameters?.getOrNull(qp.index)
                         val ki = kvp?.type
-                        val t = methodCtx.registerType(si, ki, kvp, pi.annotationInfo)
+                        val t = methodCtx.callsiteType(si, ki, kvp, pi.annotationInfo)
                             .methodRef()
                             .inlineReference()
                         qp.name to TsField(type = t, optional = qp.optional || t.isOptional, nullable = t.isNullable)
@@ -136,12 +137,7 @@ data class JvmExtractor(
                     val qType = TsType.Object(
                         jvmQualifiedClassName = "${apiCi.name}#${mi.name}Query",
                         tsName = tsName,
-                        isOptional = false,
-                        isNullable = false,
                         fields = fields,
-                        discriminator = null,
-                        supertypes = emptyList(),
-                        tsGenericParameters = emptyMap(),
                     )
                     methodCtx.addType(qType)
                     qType
@@ -175,6 +171,7 @@ data class JvmExtractor(
         )
     }
 
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
     data class Extraction(
         val apis: List<ApiModel>,
         val types: List<TsType>,

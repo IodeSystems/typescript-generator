@@ -12,20 +12,18 @@ plugins {
     id("com.iodesystems.typescript-generator")
 }
 
-generateTypescript {
-    emitLibFileName = "api-lib.ts"
-    typesFileName = "api-types.ts"
-    outputDirectory = "src/main/ui/gen"
-    externalImportLines.putAll(
-        mapOf(
-            "Dayjs" to "import type {Dayjs} from 'dayjs'"
-        )
-    )
-    mappedTypes.putAll(
-        mapOf(
-            OffsetDateTime::class.qualifiedName!! to "Dayjs",
-        )
-    )
+typescriptGenerator {
+    config {
+        emitLibAsSeparateFile("api-lib.ts")
+            .emitTypesAsSeparateFile("api-types.ts")
+            .outputDirectory("src/main/ui/gen")
+            .externalImportLines(
+                mapOf(
+                    "Dayjs" to "import type {Dayjs} from 'dayjs'"
+                )
+            )
+            .mappedType(OffsetDateTime::class, "Dayjs")
+    }
 }
 
 tasks.build { dependsOn(tasks.generateTypescript) }

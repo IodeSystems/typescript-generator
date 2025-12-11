@@ -25,7 +25,7 @@ class PathVariableTest {
 
     @Test
     fun testPathVariableEmission() {
-        val em = emitter<PathVarController>()
+        val em = emitter(PathVarController::class)
         val content = em.ts().content()
         content.assertContains(
             fragment = """

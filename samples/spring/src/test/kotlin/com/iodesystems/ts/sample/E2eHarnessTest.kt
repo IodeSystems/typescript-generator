@@ -1,20 +1,16 @@
 package com.iodesystems.ts.sample
 
 import com.microsoft.playwright.Playwright
-import kotlin.test.Test
-import kotlin.test.assertNotNull
 import org.springframework.boot.SpringApplication
 import org.springframework.context.ConfigurableApplicationContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.URL
+import java.net.*
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertNotNull
 
 class E2eHarnessTest {
 
@@ -27,14 +23,17 @@ class E2eHarnessTest {
         var springContext: ConfigurableApplicationContext? = null
         var viteProcess: Process? = null
         try {
-            // Start Spring on chosen port
             springContext = SpringApplication.run(
                 Spring::class.java,
                 "--server.port=$springPort"
             )
 
             // Wait for Spring readiness (responding on HTTP)
-            waitForHttp("http://localhost:$springPort/actuator/health", fallbackUrl = "http://localhost:$springPort/", maxWaitSeconds = 60)
+            waitForHttp(
+                "http://localhost:$springPort/actuator/health",
+                fallbackUrl = "http://localhost:$springPort/",
+                maxWaitSeconds = 60
+            )
 
             // Start Vite dev server via node
             val projectRoot = Paths.get("").toAbsolutePath().normalize().toFile()
@@ -89,8 +88,14 @@ class E2eHarnessTest {
                 }
             }
         } finally {
-            try { viteProcess?.destroy(); viteProcess?.waitFor() } catch (_: Exception) {}
-            try { springContext?.close() } catch (_: Exception) {}
+            try {
+                viteProcess?.destroy(); viteProcess?.waitFor()
+            } catch (_: Exception) {
+            }
+            try {
+                springContext?.close()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -108,7 +113,7 @@ class E2eHarnessTest {
         while (Duration.between(start, Instant.now()).seconds < maxWaitSeconds) {
             for (u in tryUrls) {
                 try {
-                    val conn = URL(u).openConnection() as HttpURLConnection
+                    val conn = URI.create(u).toURL().openConnection() as HttpURLConnection
                     conn.connectTimeout = 2000
                     conn.readTimeout = 2000
                     conn.requestMethod = "GET"

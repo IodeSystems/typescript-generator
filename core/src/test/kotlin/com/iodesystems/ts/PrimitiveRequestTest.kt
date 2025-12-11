@@ -24,7 +24,7 @@ class PrimitiveRequestTest {
 
     @Test
     fun testPrimitiveRequestResponses() {
-        val em = emitter<Primitive>()
+        val em = emitter(Primitive::class)
         val content = em.ts().content()
         content.assertContains(
             fragment = """

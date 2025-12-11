@@ -47,7 +47,7 @@ enum class MyEnum() {
 class JacksonTest {
     @Test
     fun verifiesJsonPropertyAliasAndJsonValueEnum() {
-        val em = emitter<JacksonApi> { outputDirectory("./tmp") }
+        val em = emitter(JacksonApi::class) { outputDirectory("./tmp") }
         val content = em.ts().content()
 
         // Payload type with Jackson-renamed fields and enum as string union
@@ -79,7 +79,7 @@ class JacksonTest {
 
     @Test
     fun verifiesJacksonParamOptionality() {
-        val em = emitter<JacksonApi> { outputDirectory("./tmp") }
+        val em = emitter(JacksonApi::class) { outputDirectory("./tmp") }
         val content = em.ts().content()
 
         // Type for JacksonParam should have optional fields derived from @JsonProperty(required=false)

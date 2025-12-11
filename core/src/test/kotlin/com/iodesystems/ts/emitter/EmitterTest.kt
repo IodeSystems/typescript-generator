@@ -1,5 +1,6 @@
 package com.iodesystems.ts.emitter
 
+import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.Emitter
@@ -7,16 +8,17 @@ import com.iodesystems.ts.Scanner
 import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.*
-import kotlin.test.Ignore
+import kotlin.reflect.KClass
 import kotlin.test.Test
 
 class EmitterTest {
 
     companion object {
-        inline fun <reified T> emitter(
-            crossinline fn: (Config.Builder.() -> Config.Builder) = { this }
+        fun emitter(
+            vararg classes: KClass<*>,
+            fn: (Config.Builder.() -> Config.Builder) = { this }
         ): Emitter {
-            val config = Config().build { includeApi(T::class).fn() }
+            val config = Config.Builder(Config()).fn().run { includeApi(classes = classes) }.config
             val scan = Scanner(config).scan()
             val apiRegistry = config.apiExtractor().extract(scan)
             val extraction = JvmExtractor(config).buildFromRegistry(scan, apiRegistry)
@@ -27,11 +29,12 @@ class EmitterTest {
             includeLib: Boolean = false
         ): String {
             val sb = StringBuilder()
-            files.forEach {
-                sb.append(it.file.name + ":\n")
-                sb.append("=========\n")
-                sb.append(it.content)
-                sb.append("\n=========\n")
+            files.forEach { file ->
+                sb.append("//<${file.file.name}>\n")
+                sb.append(file.content.lines().joinToString("\n") { line ->
+                    if (line.startsWith("import")) "//$line" else line
+                })
+                sb.append("\n//</${file.file.name}>\n")
             }
             return sb.toString().let { s ->
                 if (includeLib) s
@@ -44,33 +47,165 @@ class EmitterTest {
     @RequestMapping
     class Simple {
         @PostMapping
-        fun post(
+        fun withRequest(
             @RequestBody
             req: Boolean
+        ): Unit = error("stub")
+
+        @GetMapping
+        fun withResponse(
+        ): Boolean = error("stub")
+
+        @PostMapping
+        fun withRequestAndResponse(
+            @RequestBody
+            req: Boolean
+        ): Boolean = error("stub")
+    }
+
+    @Test
+    fun simplePrimitive() {
+        val emitter = emitter(Simple::class)
+        val result = emitter.ts().content()
+        result.assertContains(
+            """
+            |  withRequest(req: boolean): Promise<void> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "POST",
+            |      headers: {'Content-Type': 'application/json'},
+            |      body: JSON.stringify(req)
+            |    }).then(r=>{})
+            |  }
+            """.trimMargin(), "withRequest"
+        )
+
+        result.assertContains(
+            """
+            |  withResponse(): Promise<boolean> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "GET"
+            |    }).then(r=>r.json())
+            |  }
+            """.trimMargin(), "request"
+        )
+        result.assertContains(
+            """
+            |  withRequestAndResponse(req: boolean): Promise<boolean> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "POST",
+            |      headers: {'Content-Type': 'application/json'},
+            |      body: JSON.stringify(req)
+            |    }).then(r=>r.json())
+            |  }
+            """.trimMargin(), "request"
+        )
+    }
+
+    class JsonCreatorAliasTypes {
+        class ByteString private constructor(
+            private val url: String
         ) {
+            companion object {
+                @JvmStatic
+                @JsonCreator
+                fun fromBase64Url(base64url: String): ByteString {
+                    return ByteString(base64url.split("=")[0])
+                }
+            }
+        }
+
+        @RestController
+        @RequestMapping
+        class Api {
+            @GetMapping
+            fun get(): ByteString = error("stub")
         }
     }
 
     @Test
-    fun simple() {
-        val emitter = emitter<Simple>()
+    fun emits_type_alias_for_single_param_json_creator() {
+        val emitter = emitter(JsonCreatorAliasTypes.Api::class) {
+            mappedType(JsonCreatorAliasTypes.ByteString::class, "string")
+        }
         val result = emitter.ts().content()
+        // Expect a type alias like: export type ByteString = string
         result.assertContains(
-            """
-            export class EmitterTestSimple {
-              constructor(private opts: ApiOptions = {}) {}
-              post(req: boolean): Promise<void> {
-                return fetchInternal(this.opts, "/", {
-                  method: "POST",
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify(req)
-                }).then(r=>{})
-              }
-            }
-        """.trimIndent(), "missing"
+            "export type EmitterTestJsonCreatorAliasTypesByteString = string",
+            "ByteString alias should exist"
+        )
+        result.assertContains(
+            "get(): Promise<EmitterTestJsonCreatorAliasTypesByteString> {",
+            "ByteString function parameter should exist"
         )
     }
 
+    @RestController
+    @RequestMapping
+    class SimpleType {
+        data class Foo(val bar: String)
+
+        @PostMapping
+        fun withRequest(
+            @RequestBody
+            req: Foo
+        ): Unit = error("stub")
+
+        @GetMapping
+        fun withResponse(
+        ): Foo = error("stub")
+
+        @PostMapping
+        fun withRequestAndResponse(
+            @RequestBody
+            req: Foo
+        ): Foo = error("stub")
+    }
+
+    @Test
+    fun simpleType() {
+        val emitter = emitter(SimpleType::class)
+        val result = emitter.ts().content()
+        result.assertContains(
+            """
+            export type EmitterTestSimpleTypeFoo = {
+              bar: string
+            }
+            """.trimIndent(),
+            "type should exist"
+        )
+        result.assertContains(
+            """
+            |  withRequest(req: EmitterTestSimpleTypeFoo): Promise<void> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "POST",
+            |      headers: {'Content-Type': 'application/json'},
+            |      body: JSON.stringify(req)
+            |    }).then(r=>{})
+            |  }
+            """.trimMargin(), "withRequest"
+        )
+
+        result.assertContains(
+            """
+            |  withResponse(): Promise<EmitterTestSimpleTypeFoo> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "GET"
+            |    }).then(r=>r.json())
+            |  }
+            """.trimMargin(), "request"
+        )
+        result.assertContains(
+            """
+            |  withRequestAndResponse(req: EmitterTestSimpleTypeFoo): Promise<EmitterTestSimpleTypeFoo> {
+            |    return fetchInternal(this.opts, "/", {
+            |      method: "POST",
+            |      headers: {'Content-Type': 'application/json'},
+            |      body: JSON.stringify(req)
+            |    }).then(r=>r.json())
+            |  }
+            """.trimMargin(), "request"
+        )
+    }
 
     @RestController
     @RequestMapping
@@ -139,7 +274,7 @@ class EmitterTest {
 
     @Test
     fun kitchenSink() {
-        val emitter = emitter<KitchenSink>()
+        val emitter = emitter(KitchenSink::class)
         val result = emitter.ts().content()
         result.assertContains(
             "post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnionUnion> {",

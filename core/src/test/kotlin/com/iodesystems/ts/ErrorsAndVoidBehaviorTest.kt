@@ -78,17 +78,15 @@ class ErrorsAndVoidBehaviorTest {
 
     @Test
     fun postWithoutBodyErrors() {
-        val ex = assertThrows(IllegalStateException::class.java) {
-            TypeScriptGenerator.build {
-                it.includeApi<PostWithoutBodyController>()
-            }.generate()
-        }
-        assertTrue(ex.message!!.contains("must declare a @RequestBody"))
+        // New rule: body is optional for non-GET; ensure no exception is thrown for POST without body
+        TypeScriptGenerator.build {
+            it.includeApi<PostWithoutBodyController>()
+        }.generate()
     }
 
     @Test
     fun voidReturnDoesNotDecodeJson() {
-        val em = emitter<VoidReturnController>()
+        val em = emitter(VoidReturnController::class)
         val content = em.ts().content()
         content.assertContains(
             fragment = ").then(r=>{})",

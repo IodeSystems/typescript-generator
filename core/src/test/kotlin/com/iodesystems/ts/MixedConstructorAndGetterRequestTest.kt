@@ -43,7 +43,7 @@ class MixedConstructorAndGetterRequestTest {
 
     @Test
     fun mixedConstructorAndGetterAreRespectedInRequestBody() {
-        val em = emitter<MixedApi>()
+        val em = emitter(MixedApi::class)
         val c = em.ts().content()
         c.assertContains(
             """

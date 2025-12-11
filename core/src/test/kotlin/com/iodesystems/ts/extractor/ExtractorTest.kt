@@ -4,7 +4,10 @@ package com.iodesystems.ts.extractor
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.iodesystems.ts.Config
+import com.iodesystems.ts.Emitter
 import com.iodesystems.ts.Scanner
+import com.iodesystems.ts.emitter.EmitterTest.Companion.content
+import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertEq
 import com.iodesystems.ts.lib.Asserts.assertIsEmpty
 import com.iodesystems.ts.lib.Asserts.assertNonNull
@@ -174,7 +177,7 @@ class ExtractorTest {
         val extraction = extract<SimpleTypeExtension>()
         extraction.apis.assertSingle("There should be one api extracted")
         extraction.types.size.assertEq(3, "The request, base, and iface should be registered")
-        extraction.typeReferences.size.assertEq(4, "The items should be referenced properly")
+        extraction.typeReferences.size.assertEq(3, "The items should be referenced properly")
     }
 
 
@@ -450,6 +453,8 @@ class ExtractorTest {
                         it.nullable.assertEq(false, "items is not nullable")
                     }
             }
+
+        extraction.typeReferences.size.assertEq(2, "There should be type references, request and response, not of the Array type, but of the generic parameter")
     }
 
     @RequestMapping
@@ -507,14 +512,20 @@ class ExtractorTest {
 
         // For each child there should be an object alias; for bare variants, only the discriminator field exists
         val discriminator = union.discriminatorField
-        listOf("ExtractorTestUnionsUnionOk" to "Ok", "ExtractorTestUnionsUnionUhoh" to "Uhoh").forEach { (alias, discVal) ->
+        listOf(
+            "ExtractorTestUnionsUnionOk" to "Ok",
+            "ExtractorTestUnionsUnionUhoh" to "Uhoh"
+        ).forEach { (alias, discVal) ->
             val obj = extraction.types.firstOrNull { it.tsName == alias }
                 .assertNonNull("Expected child object '$alias'")
                 .assertType<TsType.Object>("Child alias should be an object type")
             val field = obj.fields[discriminator].assertNonNull("Discriminator field should exist on '$alias'")
             field.optional.assertEq(false, "Discriminator should not be optional on '$alias'")
             field.nullable.assertEq(false, "Discriminator should not be nullable on '$alias'")
-            field.type.tsName.assertEq("\"$discVal\"", "Discriminator literal should match child simple name for '$alias'")
+            field.type.tsName.assertEq(
+                "\"$discVal\"",
+                "Discriminator literal should match child simple name for '$alias'"
+            )
         }
     }
 
@@ -604,6 +615,97 @@ class ExtractorTest {
             err.nullable.assertEq(true, "error should be nullable by type")
             err.type.tsName.assertEq("string", "error should be string type")
         }
+    }
+
+    @RequestMapping
+    @RestController
+    class UnionWithGenerics {
+        @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
+        sealed interface Union<T> {
+            val shared: T
+
+            data class Ok<T>(
+                override val shared: T,
+                val ok: Boolean = true
+            ) : Union<T>
+
+            data class Error<T>(
+                override val shared: T,
+                val message: String
+            ) : Union<T>
+        }
+
+        @PostMapping
+        fun post(
+            @RequestBody
+            req: Union<String>
+        ): Union<Int> = error("test")
+    }
+
+    @Test
+    fun unionWithGenerics() {
+        val extraction = extract<UnionWithGenerics>()
+
+        val api = extraction.apis.assertSingle("There should be one api extracted")
+        val method = api.apiMethods.assertSingle("There should be a single method")
+
+        extraction.types
+            .firstOrNull { it.tsName == "ExtractorTestUnionWithGenericsUnion<T>" }
+            .assertNonNull("The interface type should be generated with expected name")
+            .assertType<TsType.Object>("The union alias should be a TsType.Object")
+
+
+        val union = extraction.types
+            .firstOrNull { it.tsName == "ExtractorTestUnionWithGenericsUnionUnion<T>" }
+            .assertNonNull("The union alias type should be generated with expected name")
+            .assertType<TsType.Union>("The union alias should be a TsType.Object")
+
+        method.requestBodyType.assertNonNull("There should be a request body type")
+            .let { req ->
+                req.tsName.assertEq(union.tsName, "Request should be the union alias")
+                req.tsGenericParameters.assertSingleKey("T", "Should have generic parameter T")
+                    .tsName.assertEq("string", "Request should use String for T")
+            }
+
+        method.responseBodyType.assertNonNull("There should be a response body type")
+            .let { resp ->
+                resp.tsName.assertEq(union.tsName, "Response should be the union alias")
+                resp.tsGenericParameters.assertSingleKey("T", "Should have generic parameter T")
+                    .tsName.assertEq("number", "Response should use number for T")
+            }
+
+        union.children.size.assertEq(2, "Union should have 2 children")
+        val discriminator = union.discriminatorField
+
+        extraction.types.filter { it.tsName.contains("UnionWithGenericsUnion") }
+            .forEach { type ->
+                when (type.tsName) {
+                    "ExtractorTestUnionWithGenericsUnionOk" -> {
+                        type.assertType<TsType.Object>("Ok should be object type")
+                            .let { obj ->
+                                obj.fields[discriminator].assertNonNull("Should have discriminator")
+                                    .type.tsName.assertEq("\"Ok\"", "Should have Ok discriminator")
+                                obj.fields["shared"].assertNonNull("Should have shared field")
+                                obj.fields["ok"].assertNonNull("Should have ok field")
+                                    .let { ok ->
+                                        ok.optional.assertEq(true, "ok should be optional")
+                                        ok.type.tsName.assertEq("boolean", "ok should be boolean")
+                                    }
+                            }
+                    }
+
+                    "ExtractorTestUnionWithGenericsUnionError" -> {
+                        type.assertType<TsType.Object>("Error should be object type")
+                            .let { obj ->
+                                obj.fields[discriminator].assertNonNull("Should have discriminator")
+                                    .type.tsName.assertEq("\"Error\"", "Should have Error discriminator")
+                                obj.fields["shared"].assertNonNull("Should have shared field")
+                                obj.fields["message"].assertNonNull("Should have message field")
+                                    .type.tsName.assertEq("string", "message should be string")
+                            }
+                    }
+                }
+            }
     }
 
 }

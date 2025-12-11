@@ -2,6 +2,7 @@ package com.iodesystems.ts.adapter
 
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinConstructor
+import com.iodesystems.ts.extractor.TypeShim
 import io.github.classgraph.*
 import kotlinx.metadata.*
 
@@ -38,7 +39,7 @@ interface JsonAdapter {
     }
 
     // For enums, resolve how values are serialized (e.g., @JsonValue). Return null to use name().
-    fun enumSerializedTypeOrNull(enumFqdn: String, enumNames: List<String>): String {
+    fun enumSerializedTypeOrNull(scan: ScanResult, enumFqdn: String, enumNames: List<String>): String {
         if (enumNames.isEmpty()) return "never"
         return enumNames.joinToString(" | ") { "'$it'" }
     }
@@ -47,16 +48,17 @@ interface JsonAdapter {
     // Return null if the adapter cannot determine polymorphic handling for the given base.
     fun resolveDiscriminatedSubTypes(
         scan: ScanResult,
-        baseType: ClassInfo,
+        shim: TypeShim,
     ): ResolvedDiscriminatedSubTypes?
 
-    // Optionally allow adapter to pick a JSON constructor for Java classes.
-    // Default implementation returns null (no special constructor identified).
     fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? {
         // Is this a kotlin class?
         val ctors = ci.constructorInfo
             .filter { it.isPublic && !it.isSynthetic }
-        if(ctors.isEmpty()) return null
+            .filter { c ->
+                c.parameterInfo.any { p -> p.name != null }
+            }
+        if (ctors.isEmpty()) return null
         if (ctors.size == 1) return ctors.first()
         // Try to load the kotlin class, as this might be more useful
         return ci.kotlinClass()?.let { kc ->
@@ -75,7 +77,7 @@ interface JsonAdapter {
     // Optional fallback: given a property name that wasn't renamed by resolveFieldName, an adapter
     // may still derive a serialized name from constructor parameter annotations (e.g., @JsonProperty).
     // Default: no fallback.
-    fun fallbackNameFromCtorParam(scan: ScanResult, ci: ClassInfo, propName: String): String? = null
+    fun fallbackNameFromCtorParam(scan: ScanResult, ci: ClassInfo, propName: String): String?
 
     // Given an adapter-chosen constructor and one of its parameters, return the serialized key
     // name to associate with this parameter when mapping it to a property. Default behavior uses
@@ -84,7 +86,7 @@ interface JsonAdapter {
         parent: ClassInfo,
         ctor: MethodInfo,
         param: MethodParameterInfo
-    ): String? = param.name
+    ): String?
 
     // Given a combined set of annotations collected across field/getter/setter/ctor param
     // for the same logical property, adapters may derive a rename (e.g., @JsonProperty/@JsonAlias).
@@ -144,10 +146,13 @@ interface JsonAdapter {
         val (propName, isSetter) = when {
             methodName.startsWith("is") && methodName.length > 2 ->
                 (methodName[2].lowercase() + methodName.substring(3)) to false
+
             methodName.startsWith("get") && methodName.length > 3 ->
                 (methodName[3].lowercase() + methodName.substring(4)) to false
+
             methodName.startsWith("set") && methodName.length > 3 ->
                 (methodName[3].lowercase() + methodName.substring(4)) to true
+
             else -> methodName to (f.parameterInfo.isNotEmpty())
         }
 
@@ -157,10 +162,14 @@ interface JsonAdapter {
                 name = propName,
                 rename = null,
                 type = p?.typeSignatureOrTypeDescriptor ?: f.typeSignatureOrTypeDescriptor.resultType,
-                optional = isOptional(((p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
-                    ?: emptyList()))),
-                nullable = isNullable((p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
-                    ?: emptyList())),
+                optional = isOptional(
+                    ((p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
+                        ?: emptyList()))
+                ),
+                nullable = isNullable(
+                    (p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList()
+                        ?: emptyList())
+                ),
                 annotations = (p?.annotationInfo?.toList() ?: emptyList()) + (f.annotationInfo?.toList() ?: emptyList())
             )
         } else {
@@ -199,7 +208,7 @@ data class ResolvedDiscriminatedSubTypes(
 )
 
 data class SubtypeOption(
-    val classInfo: ClassInfo,
+    val shim: TypeShim,
     val discriminatorValue: String
 )
 

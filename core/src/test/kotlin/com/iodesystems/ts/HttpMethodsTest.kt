@@ -31,7 +31,7 @@ class HttpMethodsTest {
 
     @Test
     fun testHttpMethods() {
-        val em = emitter<HttpMethods>()
+        val em = emitter(HttpMethods::class)
         val content = em.ts().content()
         // Only check each API method block (not every line independently)
         content.assertContains(

@@ -52,7 +52,7 @@ class InheritanceTest {
 
     @Test
     fun objectInheritance_isRenderedAsIntersection() {
-        val em = emitter<InheritanceApi>()
+        val em = emitter(InheritanceApi::class)
         val ts = em.ts().content()
 
         ts.assertContains(
@@ -85,7 +85,7 @@ class InheritanceTest {
 
     @Test
     fun unionInheritance_intersectsWithBase() {
-        val em = emitter<InheritanceApi>()
+        val em = emitter(InheritanceApi::class)
         val ts = em.ts().content()
 
         ts.assertContains(

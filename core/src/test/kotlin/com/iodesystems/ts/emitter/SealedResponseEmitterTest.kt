@@ -1,12 +1,8 @@
 package com.iodesystems.ts.emitter
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.Config
-import com.iodesystems.ts.Emitter
-import com.iodesystems.ts.Scanner
 import com.iodesystems.ts.emitter.EmitterTest.Companion.content
 import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
-import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -51,7 +47,7 @@ class SealedResponseEmitterTest {
 
     @Test
     fun sealed_responses_are_not_conflated_and_fields_are_preserved() {
-        val emitter = emitter<SampleApi>()
+        val emitter = emitter(SampleApi::class)
         val result = emitter.ts().content()
 
         // Ensure method signatures use distinct union types per method
@@ -103,7 +99,7 @@ class SealedResponseEmitterTest {
                 export type SealedResponseEmitterTestSampleApiPingResponsePong = SealedResponseEmitterTestSampleApiPingResponse & {
                   "@type": "Pong"
                   message: string
-                  at?: string | null | undefined
+                  at?: OffsetDateTime | null | undefined
                 }
             """.trimIndent(),
             "Pong variant type should be defined"

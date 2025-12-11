@@ -2,22 +2,41 @@ package com.iodesystems.ts
 
 import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.extractor.SpringApiExtractor
+import java.io.Serializable
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.OffsetDateTime
 import kotlin.reflect.KClass
 
-
 data class Config(
+    val includeRefComments: Boolean = true,
     val cleanOutputDir: Boolean = false,
     val classPathUrls: List<String> = emptyList(),
+    val setsAsArrays: Boolean = true,
+    val omitTypes: List<String> = listOf(
+        Class::class,
+        java.lang.Comparable::class,
+        java.io.Serializable::class,
+        kotlin.enums.EnumEntries::class,
+        java.lang.Enum::class
+    ).map { it.qualifiedName!! } +
+            // Kotlin rewrites java.lang.Comparable to kotlin.lang.Comparable
+            listOf(
+                "java.lang.Comparable",
+                "java.lang.Enum"
+            ),
     val mappedTypes: Map<String, String> = mapOf(
+        // Using JavaTimeModule from jackson-datatype-jsr310
+        Duration::class.qualifiedName!! to "string",
         OffsetDateTime::class.qualifiedName!! to "string",
         LocalDate::class.qualifiedName!! to "string",
-        LocalTime::class.qualifiedName!! to "string"
+        LocalTime::class.qualifiedName!! to "string",
+        // Optional
+        java.util.Optional::class.qualifiedName!! to "T | null"
     ),
     val outputDirectory: String = "./",
-    val basePackages: List<String> = emptyList(),
+    val apiBasePackages: List<String> = emptyList(),
     // Fully-qualified annotation class names that should mark a field/param/getter as optional
     // (in addition to library-specific or Kotlin-default rules). Defaults include common nullable
     // annotations for convenience in optional contexts (e.g., request params), and a placeholder
@@ -55,7 +74,35 @@ data class Config(
     // Map of external TypeScript type simple name -> full import line to emit as-is
     // Example: "Dayjs" -> "import {Dayjs} from 'dayjs'"
     val externalImportLines: Map<String, String> = emptyMap(),
-) {
+    // Enables extra diagnostic logs from heavy phases (type registration, queue sizes, memory snapshots).
+    // Keep default false to avoid overhead in normal runs.
+    val diagnosticLogging: Boolean = false,
+) : Serializable {
+
+    override fun toString(): String {
+        return buildString {
+            append("Config(")
+            val props = listOfNotNull(
+                if (cleanOutputDir) "cleanOutputDir=$cleanOutputDir" else null,
+                if (classPathUrls.isNotEmpty()) "classPathUrls=$classPathUrls" else null,
+                if (mappedTypes.isNotEmpty()) "mappedTypes=$mappedTypes" else null,
+                if (outputDirectory != "./") "outputDirectory='$outputDirectory'" else null,
+                if (apiBasePackages.isNotEmpty()) "basePackages=$apiBasePackages" else null,
+                if (optionalAnnotations.isNotEmpty()) "optionalAnnotations=$optionalAnnotations" else null,
+                if (nullableAnnotations.isNotEmpty()) "nullableAnnotations=$nullableAnnotations" else null,
+                if (includeApiIncludes.isNotEmpty()) "includeApiIncludes=$includeApiIncludes" else null,
+                if (includeApiExcludes.isNotEmpty()) "includeApiExcludes=$includeApiExcludes" else null,
+                if (typeNameReplacements.isNotEmpty()) "typeNameReplacements=$typeNameReplacements" else null,
+                emitLibFileName?.let { "emitLibFileName='$it'" },
+                groupApiFile?.let { "groupApiFile=$it" },
+                typesFileName?.let { "typesFileName='$it'" },
+                if (externalImportLines.isNotEmpty()) "externalImportLines=$externalImportLines" else null,
+                if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null
+            )
+            append(props.joinToString(", "))
+            append(")")
+        }
+    }
 
     companion object {
         fun build(fn: Builder.() -> Builder): Config {
@@ -68,6 +115,10 @@ data class Config(
     }
 
     private val regexCache = mutableMapOf<String, Regex>()
+
+    fun includeType(fqcn: String): Boolean {
+        return !omitTypes.any { fqcn.startsWith(it) }
+    }
 
     fun includeApi(name: String): Boolean {
         val included =
@@ -98,6 +149,15 @@ data class Config(
     data class Builder(
         val config: Config = Config(),
     ) {
+        fun omitTypes(vararg fqns: String) = copy(config = config.run { copy(omitTypes = fqns.toList()) })
+        fun setsAsArrays(set: Boolean = true) = copy(config = config.run { copy(setsAsArrays = set) })
+        fun includeRefComments(set: Boolean = true) = copy(config = config.run { copy(includeRefComments = set) })
+
+        fun classPathUrls(f: (List<String>) -> List<String>): Builder {
+            val newUrls = f(config.classPathUrls)
+            return copy(config = config.run { copy(classPathUrls = newUrls) })
+        }
+
         fun cleanOutputDir(set: Boolean = true) = copy(config = config.run {
             copy(cleanOutputDir = set)
         })
@@ -106,17 +166,21 @@ data class Config(
             copy(outputDirectory = dir)
         })
 
+        fun mappedType(map: Map<String, String>) = copy(config = config.run {
+            copy(mappedTypes = mappedTypes + map)
+        })
+
         fun mappedType(klass: KClass<*>, tsIdentifier: String) = copy(config = config.run {
             copy(mappedTypes = mappedTypes + (klass.java.name to tsIdentifier))
         })
 
-        fun basePackages(vararg pkgs: String) = copy(config = config.run {
-            copy(basePackages = pkgs.toList())
+        fun apiBasePackages(vararg pkgs: String) = copy(config = config.run {
+            copy(apiBasePackages = pkgs.toList())
         })
 
         inline fun <reified T> includeApi() = includeApi(T::class)
-        fun includeApi(vararg kClass: KClass<*>) = copy(config = config.run {
-            copy(includeApiIncludes = includeApiIncludes + kClass.map { it.java.name })
+        fun includeApi(vararg classes: KClass<*>) = copy(config = config.run {
+            copy(includeApiIncludes = includeApiIncludes + classes.map { it.java.name })
         })
 
         fun includeApis(vararg patterns: String) = copy(config = config.run {
@@ -165,6 +229,8 @@ data class Config(
         fun addTypeNameReplacement(pattern: String, replacement: String) = copy(config = config.run {
             copy(typeNameReplacements = typeNameReplacements + (pattern to replacement))
         })
+
+        fun externalImportLines(vararg pairs: Pair<String, String>) = externalImportLines(pairs.toMap())
 
         fun externalImportLines(mapping: Map<String, String>) = copy(config = config.run {
             copy(externalImportLines = mapping)

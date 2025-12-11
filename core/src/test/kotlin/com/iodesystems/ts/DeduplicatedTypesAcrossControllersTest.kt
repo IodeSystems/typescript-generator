@@ -58,7 +58,7 @@ class DeduplicatedTypesAcrossControllersTest {
     @Test
     fun typesAreRenderedOnlyOnceAcrossControllers() {
         val out = TypeScriptGenerator.build { cfg ->
-            cfg.basePackages(javaClass.packageName)
+            cfg.apiBasePackages(javaClass.packageName)
                 .includeApi(
                     AController::class,
                     BController::class,

@@ -32,7 +32,7 @@ class Poly {
 class PolymorphicTest {
     @Test
     fun emitsPolymorphicBodiesReturnsAndIntermediateTypes() {
-        val em = emitter<Poly> {
+        val em = emitter(Poly::class) {
             outputDirectory("./tmp")
         }
         val content = em.ts().content()
@@ -69,8 +69,7 @@ class PolymorphicTest {
         // Response type intersection (supers-first order in emitter)
         content.assertContains(
             fragment = """
-            type PolyResponse = PolyIContainer<string,boolean> & {
-            }
+            type PolyResponse = PolyIContainer<string,boolean>
         """.trimIndent(),
             why = "Response should intersect its implemented interface with concrete type arguments"
         )

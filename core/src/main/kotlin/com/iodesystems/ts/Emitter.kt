@@ -145,7 +145,7 @@ class Emitter(
         val file: File,
         val content: StringBuilder = StringBuilder(),
         val ownedTypes: MutableSet<String> = mutableSetOf(),
-        val alreadyImported: MutableSet<String> = mutableSetOf()
+        val alreadyImported: MutableSet<String> = mutableSetOf(),
     ) {
         fun write(string: String) {
             content.append(string)
@@ -219,14 +219,33 @@ class Emitter(
             val o = writeContextForType()
             o.ownedTypes.add(type.tsName)
             typeLocations[type.tsName] = o
+
+            o.write("/**\n")
+            o.write(" * Jvm {@link ${type.jvmQualifiedClassName}}\n")
+            if (config.includeRefComments) {
+                extraction.typeReferences.filter { it.toTsBaseName == type.tsName }
+                    .groupBy { it.refType }
+                    .forEach { (type, refs) ->
+                        o.write(" * $type ref:\n")
+                        refs.forEach { ref ->
+                            o.write(" * - {@link ${ref.fromTsBaseName}}\n")
+                        }
+                    }
+            }
+            o.write(" */\n")
+
             o.write("export type ${type.tsName} = ")
             when (type) {
-                is TsType.Inline -> {
-                    TODO("Does this even happen, I don't think so, not in all the tests")
-                }
-
+                is TsType.Inline -> error("Inline types are NOT exported. This is an error here")
                 is TsType.Object -> {
+
                     val supers = type.supertypes
+                    // Alias-like object: no fields, exactly one supertype, no discriminator
+                    if (type.fields.isEmpty() && supers.size == 1 && type.discriminator == null) {
+                        o.write(tsNameWithGenericsResolved(supers.first()))
+                        o.write("\n")
+                        return@forEach
+                    }
                     if (supers.isNotEmpty()) {
                         o.write(supers.joinToString(" & ") { tsNameWithGenericsResolved(it) })
                         o.write(" & ")
@@ -275,13 +294,19 @@ class Emitter(
             }
         }
 
+        val didImportTypes = mutableSetOf<WriteContext>()
         extraction.apis.map { api ->
             val o = api.writeContext()
-            if (o != lib) o.write(
-                "import { ApiOptions, fetchInternal, flattenQueryParams } from '${
-                    o.importFrom(lib).dropLast(3)
-                }'\n"
-            )
+
+            if (o != lib) {
+                if (didImportTypes.add(o)) {
+                    o.write(
+                        "import { ApiOptions, fetchInternal, flattenQueryParams } from '${
+                            o.importFrom(lib).dropLast(3)
+                        }'\n"
+                    )
+                }
+            }
 
 
             val importTypes = mutableSetOf<String>()
@@ -295,8 +320,12 @@ class Emitter(
                 val ctx = writeContextForType()
                 if (ctx != o) {
                     val path = o.importFrom(ctx).dropLast(3)
-                    val names = importTypes.toList().sorted().joinToString(", ")
-                    o.write("import { ${names} } from '${path}'\n")
+                    val names = importTypes.filter {
+                        !o.alreadyImported.contains(it)
+                    }.toList().sorted()
+                    o.alreadyImported.addAll(names)
+                    o.write("import { ${names.joinToString(", ")} } from '$path'\n")
+
                 }
             }
 

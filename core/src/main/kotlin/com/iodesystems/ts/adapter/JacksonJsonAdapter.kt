@@ -1,9 +1,7 @@
 package com.iodesystems.ts.adapter
 
-import com.fasterxml.jackson.annotation.JsonAlias
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.fasterxml.jackson.annotation.JsonTypeName
+import com.fasterxml.jackson.annotation.*
+import com.iodesystems.ts.extractor.TypeShim
 import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
@@ -11,6 +9,55 @@ import io.github.classgraph.ScanResult
 
 // Default no-op Jackson adapter (baseline behavior remains unchanged for now)
 class JacksonJsonAdapter : JsonAdapter {
+    override fun enumSerializedTypeOrNull(scan: ScanResult, enumFqdn: String, enumNames: List<String>): String {
+        // Attempt to honor @JsonValue on enum fields or methods by reflectively loading the class
+        // and computing the serialized values for each constant. Fallback to default behavior
+        // (the enum constant names) if anything is missing or fails.
+
+        val clazz = scan.getClassInfo(enumFqdn).loadClass()
+        if (!clazz.isEnum) return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
+
+        // Find a zero-arg method annotated with @JsonValue
+        val jsonValueMethod = clazz.methods.firstOrNull { m ->
+            m.getAnnotation(JsonValue::class.java) != null && m.parameterCount == 0
+        }
+        // Or a field annotated with @JsonValue
+        val jsonValueField = if (jsonValueMethod != null) null else clazz.fields.firstOrNull { f ->
+            f.getAnnotation(JsonValue::class.java) != null
+        }
+
+        if (jsonValueMethod == null && jsonValueField == null) {
+            return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val constants = clazz.enumConstants as Array<Any>
+        val values: List<Any?> = when {
+            jsonValueMethod != null -> {
+                constants.map { c -> jsonValueMethod.invoke(c) }
+            }
+
+            jsonValueField != null -> {
+                constants.map { c -> jsonValueField.get(c) }
+            }
+
+            else -> emptyList()
+        }
+
+        if (values.isEmpty()) return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
+
+        // Format as TypeScript union literals, preserving primitive types
+        fun tsLiteral(v: Any?): String = when (v) {
+            null -> "null" // unlikely for @JsonValue but handle defensively
+            is String -> "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
+            is Char -> "'" + v.toString().replace("'", "\\'") + "'"
+            is Boolean, is Byte, is Short, is Int, is Long, is Float, is Double -> v.toString()
+            else -> "'" + v.toString().replace("\\", "\\\\").replace("'", "\\'") + "'"
+        }
+
+        return values.joinToString(" | ") { tsLiteral(it) }
+    }
+
     override fun isOptional(an: List<io.github.classgraph.AnnotationInfo>): Boolean? {
         val jp = an.firstOrNull { it.classInfo.name == JsonProperty::class.java.name } ?: return super.isOptional(an)
         val required = jp.parameterValues.firstOrNull { it.name == "required" }?.value as? Boolean
@@ -78,11 +125,9 @@ class JacksonJsonAdapter : JsonAdapter {
 
     override fun resolveDiscriminatedSubTypes(
         scan: ScanResult,
-        baseType: ClassInfo,
+        shim: TypeShim,
     ): ResolvedDiscriminatedSubTypes? {
-        // Mirror previous logic: only consider polymorphism for return-position annotated bases
-        val jsonTypeInfo = baseType.annotationInfo.get(JsonTypeInfo::class.java.name) ?: return null
-
+        val jsonTypeInfo = shim.getClassAnnotation(JsonTypeInfo::class.java.name) ?: return null
         val useParam = jsonTypeInfo.parameterValues
             .firstOrNull { it.name == "use" }?.value as? AnnotationEnumValue
         val id = JsonTypeInfo.Id.valueOf(useParam?.valueName!!)
@@ -92,7 +137,7 @@ class JacksonJsonAdapter : JsonAdapter {
             if (it.isNullOrBlank()) id.defaultPropertyName else it
         }
 
-        val impls = scan.getClassesImplementing(baseType.name).sortedBy { it.simpleName }
+        val impls = scan.getClassesImplementing(shim.fqcn()).sortedBy { it.simpleName }
         val options = impls.map { impl ->
             val discValue = when (id) {
                 JsonTypeInfo.Id.CLASS -> impl.name
@@ -105,7 +150,7 @@ class JacksonJsonAdapter : JsonAdapter {
 
                 else -> error("Unsupported type $id")
             }
-            SubtypeOption(impl, discValue)
+            SubtypeOption(TypeShim.forClassInfo(impl), discValue)
         }
         return ResolvedDiscriminatedSubTypes(discriminatorProperty, options)
     }
@@ -114,10 +159,17 @@ class JacksonJsonAdapter : JsonAdapter {
         val ctors = ci.constructorInfo
             .filter { it.isPublic && !it.isSynthetic }
         // Prefer a constructor annotated with @JsonCreator
-        val creator = ctors.firstOrNull { ctor ->
-            ctor.annotationInfo.get(com.fasterxml.jackson.annotation.JsonCreator::class.java.name) != null
-        }
-        if (creator != null) return creator
+        ctors.firstOrNull { ctor ->
+            ctor.annotationInfo.get(JsonCreator::class.java.name) != null
+        }?.let { return it }
+
+        // Prefer static method annotated with @JsonCreator
+        ci.methodInfo.firstOrNull {
+            it.isStatic && it.isPublic && !it.isSynthetic && !it.parameterInfo.isEmpty() && it.annotationInfo.get(
+                JsonCreator::class.java.name
+            ) != null
+        }?.let { return it }
+
         return super.chooseJsonConstructor(ci, scan)
     }
 

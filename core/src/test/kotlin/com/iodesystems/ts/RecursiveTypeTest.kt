@@ -6,7 +6,6 @@ import com.iodesystems.ts.lib.Asserts.assertContains
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import kotlin.test.Ignore
 import kotlin.test.Test
 
 @RestController
@@ -26,7 +25,7 @@ class RecursiveTypeTest {
 
     @Test
     fun recursiveNodeShape() {
-        val em = emitter<RecursiveTypesApi>()
+        val em = emitter(RecursiveTypesApi::class)
         val ts = em.ts().content()
 
         ts.assertContains(
@@ -47,5 +46,24 @@ class RecursiveTypeTest {
             """.trimIndent(),
             why = "API method should return the recursive Node type"
         )
+    }
+
+    @RestController
+    @RequestMapping
+    class Generics {
+        data class Tree<T>(
+            val value: T,
+            val children: List<Tree<T>>
+        )
+
+        @GetMapping("/tree")
+        fun getTree(): Tree<Tree<String>> = error("test")
+    }
+
+    @Test
+    fun recursiveGenerics() {
+        val em = emitter(Generics::class)
+        val ts = em.ts().content()
+        println(ts)
     }
 }

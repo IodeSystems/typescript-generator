@@ -1,8 +1,12 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.lib.Log.logger
+
 class TypeScriptGenerator(
     val config: Config = Config(),
 ) {
+    val log = logger()
+
     companion object {
         fun build(builder: (Config.Builder) -> Config.Builder): TypeScriptGenerator {
             return TypeScriptGenerator(builder(Config.Builder()).config)
@@ -18,6 +22,7 @@ class TypeScriptGenerator(
     }
 
     fun generate(): Emitter.Output {
+        log.debug("Generating type script with config: \n ${config.toString().replaceIndent("    ")}")
         return emitter().ts()
     }
 }
