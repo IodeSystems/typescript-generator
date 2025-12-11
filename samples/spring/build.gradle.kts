@@ -15,17 +15,18 @@ plugins {
 typescriptGenerator {
     config {
         emitLibAsSeparateFile("api-lib.ts")
-            .emitTypesAsSeparateFile("api-types.ts")
-            .outputDirectory("src/main/ui/gen")
-            .externalImportLines(
-                mapOf(
-                    "Dayjs" to "import type {Dayjs} from 'dayjs'"
-                )
+        emitTypesAsSeparateFile("api-types.ts")
+        outputDirectory("src/main/ui/gen")
+        externalImportLines(
+            mapOf(
+                "Dayjs" to "import type {Dayjs} from 'dayjs'"
             )
-            .mappedType(OffsetDateTime::class, "Dayjs")
+        )
+        mappedType(OffsetDateTime::class, "Dayjs")
     }
 }
 
+// When we build, we should also generateTypescript
 tasks.build { dependsOn(tasks.generateTypescript) }
 
 idea {

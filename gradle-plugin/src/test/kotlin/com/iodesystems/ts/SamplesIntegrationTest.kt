@@ -44,7 +44,7 @@ class SamplesIntegrationTest {
     fun `publish plugin to mavenLocal then build sample project`() {
         val root = findRepoRoot()
         val mvnLocal = "-Dmaven.repo.local=${File(System.getProperty("user.dir"), "/../build/m2/repository")}"
-        val skipSigning = "-Dskip.signing=true"
+        val skipSigning = "-PskipSigning=true"
         runCmd(root, "./gradlew", mvnLocal, skipSigning, "publishToMavenLocal").also { res ->
             assertEquals(0, res.code, "publishToMavenLocal failed. Output:\n${res.output}")
         }

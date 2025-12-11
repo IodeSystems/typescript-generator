@@ -28,6 +28,8 @@ tasks.publishToMavenLocal {
     )
 }
 
+val requireSign = !rootProject.hasProperty("skipSigning")
+
 subprojects {
     apply(plugin = "java")
     apply(plugin = "maven-publish")
@@ -42,9 +44,11 @@ subprojects {
         withJavadocJar()
     }
     signing {
+        isRequired = requireSign
         useGpgCmd()
         sign(publishing.publications)
     }
+
     publishing {
         if (project.name == "core") {
             publications {
@@ -93,10 +97,11 @@ subprojects {
             }
         }
     }
-    if (!project.hasProperty("skip.signing")) {
-        val signingTasks = tasks.withType<Sign>()
-        tasks.withType<AbstractPublishToMaven>().configureEach {
-            dependsOn(signingTasks)
-        }
+    val signingTasks = tasks.withType<Sign>()
+    signingTasks.configureEach {
+        onlyIf { requireSign }
+    }
+    tasks.withType<AbstractPublishToMaven>().configureEach {
+        dependsOn(signingTasks)
     }
 }
