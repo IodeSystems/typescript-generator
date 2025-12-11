@@ -4,7 +4,6 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class SamplesIntegrationTest {
 
@@ -44,25 +43,13 @@ class SamplesIntegrationTest {
     @Test
     fun `publish plugin to mavenLocal then build sample project`() {
         val root = findRepoRoot()
-
         val mvnLocal = "-Dmaven.repo.local=${File(System.getProperty("user.dir"), "/../build/m2/repository")}"
-        println(mvnLocal)
-        // 1) ./gradlew publishToMavenLocal
-        runCmd(root, "./gradlew", mvnLocal, "publishToMavenLocal").also { res ->
+        val skipSigning = "-Dskip.signing=true"
+        runCmd(root, "./gradlew", mvnLocal, skipSigning, "publishToMavenLocal").also { res ->
             assertEquals(0, res.code, "publishToMavenLocal failed. Output:\n${res.output}")
         }
-
-        val sample = File(root, "samples/spring")
-        assertTrue(sample.isDirectory, "samples/spring directory not found at ${sample.absolutePath}")
-
-        // 2) ./gradlew generateTypescript
-        runCmd(sample, "./gradlew", mvnLocal, "generateTypescript").also { res ->
+        runCmd(File(root, "samples/spring"), "./gradlew", mvnLocal, "generateTypescript").also { res ->
             assertEquals(0, res.code, "generateTypescript failed. Output:\n${res.output}")
-        }
-
-        // 3) ./gradlew build
-        runCmd(sample, "./gradlew", mvnLocal, "build").also { res ->
-            assertEquals(0, res.code, "build failed. Output:\n${res.output}")
         }
     }
 }

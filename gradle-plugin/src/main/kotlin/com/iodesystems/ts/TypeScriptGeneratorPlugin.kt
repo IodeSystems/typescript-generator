@@ -15,8 +15,10 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
     interface Extension {
         var config: Config?
 
-        fun config(f: Config.Builder.() -> Config.Builder) {
-            config = Config.Builder(config ?: Config()).f().config
+        fun config(f: Config.Builder.() -> Unit) {
+            val b = Config.Builder(config ?: Config())
+            b.f()
+            config = b.config
         }
     }
 

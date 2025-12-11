@@ -32,62 +32,60 @@ plugins {
 ```
 
 Configure the generator. The extension and the task are both named `generateTypescript`.
-Note: properties use Gradle `Property`/`ListProperty`/`MapProperty`, so in Kotlin DSL use `.set(...)` or `.add(...)`/`.addAll(...)` as shown:
+Use the internal mutable `Config` builder via `config { ... }`:
 
 ```kotlin
 generateTypescript {
-    // Where files are written (default: "./")
-    outputDirectory.set("src/main/ui/generated")
+    config {
+        // Where files are written (default: "./")
+        outputDirectory("src/main/ui/generated")
 
-    // Packages to scan for API/controllers and models
-    basePackages.set(listOf("com.example.api"))
+        // Packages to scan for API/controllers and models
+        apiBasePackages("com.example.api")
 
-    // Clean the output directory before writing
-    cleanOutputDir.set(true)
+        // Clean the output directory before writing
+        cleanOutputDir()
 
-    // Map JVM types to TypeScript
-    mappedTypes.set(mapOf(
-        "java.time.OffsetDateTime" to "string",
-        "java.time.LocalDate" to "string",
-        "java.time.LocalTime" to "string",
-    ))
-
-    // Treat fields/params with these annotations as optional and/or nullable
-    optionalAnnotations.set(setOf(
-        "org.jetbrains.annotations.Nullable",
-    ))
-    nullableAnnotations.set(setOf(
-        "org.jetbrains.annotations.Nullable",
-    ))
-
-    // Include/exclude APIs (by FQN or regex)
-    includeApiIncludes.set(listOf("com.example.api..*"))
-    includeApiExcludes.set(listOf("com.example.internal..*"))
-
-    // Replace type simple names via regex → replacement
-    typeNameReplacements.set(mapOf(
-        "[.$]" to "",
-    ))
-
-    // Control output file layout
-    // If you set a separate lib file, helpers go to that file; otherwise emitted inline in api.ts
-    emitLibFileName.set("api-lib.ts")
-    // Group specific controllers into separate API files (keys are filenames)
-    groupApiFile.set(
-        mapOf(
-            "users-api.ts" to listOf("com.example.api.UserController"),
-            "orders-api.ts" to listOf("com.example.api.OrderController"),
+        // Map JVM types to TypeScript
+        mappedTypes(
+            mapOf(
+                "java.time.OffsetDateTime" to "string",
+                "java.time.LocalDate" to "string",
+                "java.time.LocalTime" to "string",
+            )
         )
-    )
-    // When grouping, you can also split shared types
-    typesFileName.set("api-types.ts")
 
-    // Emit custom import lines for external TS types you reference
-    externalImportLines.set(
-        mapOf(
-            "Dayjs" to "import { Dayjs } from 'dayjs'",
+        // Treat fields/params with these annotations as optional and/or nullable
+        optionalAnnotations("org.jetbrains.annotations.Nullable")
+        nullableAnnotations("org.jetbrains.annotations.Nullable")
+
+        // Include/exclude APIs (by FQN or regex)
+        includeApis("com.example.api..*")
+        excludeApis("com.example.internal..*")
+
+        // Replace type simple names via regex → replacement
+        typeNameReplacements(mapOf("[.$]" to ""))
+
+        // Control output file layout
+        // If you set a separate lib file, helpers go to that file; otherwise emitted inline in api.ts
+        emitLibAsSeparateFile("api-lib.ts")
+        // Group specific controllers into separate API files (keys are filenames)
+        groupApis(
+            mapOf(
+                "users-api.ts" to listOf("com.example.api.UserController"),
+                "orders-api.ts" to listOf("com.example.api.OrderController"),
+            )
         )
-    )
+        // When grouping, you can also split shared types
+        emitTypesAsSeparateFile("api-types.ts")
+
+        // Emit custom import lines for external TS types you reference
+        externalImportLines(
+            mapOf(
+                "Dayjs" to "import { Dayjs } from 'dayjs'",
+            )
+        )
+    }
 }
 ```
 
@@ -99,8 +97,8 @@ Run the task:
 
 What gets generated:
 - Single-file default: `api.ts` containing types and API helpers.
-- If `emitLibFileName` is set to `api-lib.ts`: helpers go to `api-lib.ts`, types remain in `api.ts` unless `typesFileName` is set.
-- If `groupApiFile` is set: one file per entry (e.g., `users-api.ts`, `orders-api.ts`), a `api-lib.ts` (unless overridden), and a shared types file if `typesFileName` is set (default `api-types.ts`).
+- If you call `emitLibAsSeparateFile("api-lib.ts")`: helpers go to `api-lib.ts`, types remain in `api.ts` unless you also split types.
+- If you call `groupApis(...)`: one file per entry (e.g., `users-api.ts`, `orders-api.ts`), a `api-lib.ts` (unless overridden), and a shared types file if `emitTypesAsSeparateFile(...)`/`typesFileName(...)` is set (default `api-types.ts`).
 
 Build integration:
 - The plugin wires `processResources` to depend on `generateTypescript`, and it depends on `compileJava`/`compileKotlin` tasks to ensure classpaths are available.
@@ -108,10 +106,10 @@ Build integration:
 ### Programmatic Usage
 
 ```kotlin
-val generator = com.iodesystems.ts.TypeScriptGenerator.build { cfg ->
-    cfg
+val generator = com.iodesystems.ts.TypeScriptGenerator.build { b ->
+    b
         .outputDirectory("./generated")
-        .basePackages("com.example.api")
+        .apiBasePackages("com.example.api")
         .includeApis("com.example.api..*")
         .emitLibAsSeparateFile() // "api-lib.ts"
         .emitTypesAsSeparateFile() // "api-types.ts"
@@ -124,18 +122,18 @@ output.write()
 
 ## Configuration Options
 
-- `outputDirectory` (String): Directory where generated files are written. Default: `./`
-- `cleanOutputDir` (Boolean): Delete output files before writing. Default: `false`
-- `basePackages` (List<String>): Packages to scan for classes/controllers. Default: empty (scan everything on classpath)
-- `mappedTypes` (Map<String,String>): Map JVM FQCN to TypeScript identifier.
-- `optionalAnnotations` (Set<String>): FQCNs that mark a field/param/getter as optional.
-- `nullableAnnotations` (Set<String>): FQCNs that mark a field/param/getter as nullable.
-- `includeApiIncludes` / `includeApiExcludes` (List<String>): FQCN or regex patterns to include/exclude APIs.
-- `typeNameReplacements` (Map<Regex,String>): Regex replacement rules for simple type names.
-- `emitLibFileName` (String?): If set, emit API helpers to this file (commonly `api-lib.ts`).
-- `groupApiFile` (Map<String, List<String>>?): Group controllers (by FQCN or regex) into specific output files.
-- `typesFileName` (String?): When grouping or splitting types, the output types file name (e.g., `api-types.ts`).
-- `externalImportLines` (Map<String,String>): Map of simple type name to import line to emit at top of files.
+- `outputDirectory` (String) — builder: `outputDirectory(dir)`. Directory where generated files are written. Default: `./`
+- `cleanOutputDir` (Boolean) — builder: `cleanOutputDir()`. Delete output files before writing. Default: `false`
+- `apiBasePackages` (List<String>) — builder: `apiBasePackages(vararg)`. Packages to scan for controllers/models. Default: empty (scan everything on classpath)
+- `mappedTypes` (Map<String,String>) — builder: `mappedTypes(map)` / `mappedType(KClass, String)`. Map JVM FQCN to TypeScript identifier.
+- `optionalAnnotations` (Set<String>) — builder: `optionalAnnotations(vararg)` / `addOptionalAnnotations(vararg)`. FQCNs that mark a field/param/getter as optional.
+- `nullableAnnotations` (Set<String>) — builder: `nullableAnnotations(vararg)` / `addNullableAnnotations(vararg)`. FQCNs that mark a field/param/getter as nullable.
+- `includeApiIncludes` / `includeApiExcludes` (List<String>) — builder: `includeApis(vararg)` / `excludeApis(vararg)`. FQCN or regex patterns to include/exclude APIs.
+- `typeNameReplacements` (Map<Regex,String>) — builder: `typeNameReplacements(map)` / `addTypeNameReplacement(pattern, replacement)`. Regex replacement rules for simple type names.
+- `emitLibFileName` (String?) — builder: `emitLibAsSeparateFile(name)`. If set, emit API helpers to this file (commonly `api-lib.ts`).
+- `groupApiFile` (Map<String, List<String>>?) — builder: `groupApis(map)`. Group controllers (by FQCN) into specific output files.
+- `typesFileName` (String?) — builder: `typesFileName(name)` / `emitTypesAsSeparateFile(name)`. When grouping or splitting types, the output types file name (e.g., `api-types.ts`).
+- `externalImportLines` (Map<String,String>) — builder: `externalImportLines(map)` / `addExternalImportLine(name, line)`. Map of simple type name to import line to emit at top of files.
 
 ## Spring Boot Support
 
@@ -158,76 +156,148 @@ Out of the box, the generator looks for Spring MVC/Web annotations and extracts 
 Below is a compact Spring controller showcasing many supported features (generics, nested types, unions, path/query params, optional/nullable, lists, maps). This exact class is used by the tests (`EmitterTest#kitchenSink`).
 
 ```kotlin
+// In an object: com.iodesystems.ts.emitter.EmitterTest
 @RestController
 @RequestMapping
 class KitchenSink {
 
-    @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
-    sealed interface Union {
-        data object Ok : Union
-        data object Uhoh : Union
-    }
+  @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
+  sealed interface Union {
+    data object Ok : Union
+    data object Uhoh : Union
+  }
 
-    interface IContainer<Q> { val item: Q }
-    open class Container<T>(override val item: T) : IContainer<T>
-    class Request<A, B>(item: A, val items: List<B>) : Container<A>(item)
-    data class Other(val value: String)
+  interface IContainer<Q> {
+    val item: Q
+  }
 
-    @PostMapping
-    fun post(@RequestBody req: Map<String, Request<String, Int>>): Union = error("test")
+  open class Container<T>(
+    override val item: T
+  ) : IContainer<T>
 
-    data object Get {
-        data class Response(val items: List<String> = emptyList())
-    }
+  class Request<A, B>(
+    item: A,
+    val items: List<B>
+  ) : Container<A>(item)
 
-    @GetMapping
-    fun get(): List<Get.Response?> = error("test")
+  data class Other(val value: String)
 
-    @GetMapping("/{id}")
-    fun path(@PathVariable id: Long) {}
+  @PostMapping
+  fun post(
+    @RequestBody
+    req: Map<String, Request<String, Int>>
+  ): Union = error("test")
 
-    data class SearchQuery(
-        val q: String,
-        @RequestParam(required = false) val limit: Int?
+  data object Get {
+    data class Response(
+      val items: List<String> = emptyList(),
     )
+  }
 
-    @GetMapping("/search")
-    fun search(@RequestParam("q") q: String, @RequestParam(required = false) limit: Int?): List<Int> = error("test")
+  @GetMapping
+  fun get(): List<Get.Response?> = error("test")
 
-    @PostMapping("/optional")
-    fun optional(@RequestBody req: Other?) {}
+  @GetMapping("/{id}")
+  fun path(
+    @PathVariable id: Long
+  ) {
+  }
+
+  data class SearchQuery(
+    val q: String,
+    @RequestParam(required = false)
+    val limit: Int?
+  )
+
+  @GetMapping("/search")
+  fun search(
+    @RequestParam("q") q: String,
+    @RequestParam(required = false) limit: Int?
+  ): List<Int> = error("test")
+
+  @PostMapping("/optional")
+  fun optional(
+    @RequestBody req: Other?
+  ) {
+  }
 }
 ```
 
 Generated TypeScript (abridged to show types and API class; helper lib omitted):
 
 ```ts
+//<api.ts>
+
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Union}
+ * TYPE ref:
+ * - {@link EmitterTestKitchenSinkUnionOk}
+ * - {@link EmitterTestKitchenSinkUnionUhoh}
+ */
+export type EmitterTestKitchenSinkUnion = {
+}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Union$Ok}
+ * TYPE ref:
+ * - {@link EmitterTestKitchenSinkUnionUnion}
+ */
+export type EmitterTestKitchenSinkUnionOk = EmitterTestKitchenSinkUnion & {
+  "@type": "Ok"
+}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Union$Uhoh}
+ * TYPE ref:
+ * - {@link EmitterTestKitchenSinkUnionUnion}
+ */
+export type EmitterTestKitchenSinkUnionUhoh = EmitterTestKitchenSinkUnion & {
+  "@type": "Uhoh"
+}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Union#Union}
+ * METHOD ref:
+ * - {@link EmitterTestKitchenSink#post}
+ */
+export type EmitterTestKitchenSinkUnionUnion = EmitterTestKitchenSinkUnion & (EmitterTestKitchenSinkUnionOk | EmitterTestKitchenSinkUnionUhoh)
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Request}
+ * METHOD ref:
+ * - {@link EmitterTestKitchenSink#post}
+ */
+export type EmitterTestKitchenSinkRequest<A,B> = EmitterTestKitchenSinkContainer<A> & {
+  items: Array<B>
+}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Container}
+ */
+export type EmitterTestKitchenSinkContainer<T> = EmitterTestKitchenSinkIContainer<T>
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$IContainer}
+ */
 export type EmitterTestKitchenSinkIContainer<Q> = {
   item: Q
 }
-export type EmitterTestKitchenSinkContainer<T> = EmitterTestKitchenSinkIContainer<T> & {
-  item: T
-}
-export type EmitterTestKitchenSinkRequest<A,B> = EmitterTestKitchenSinkContainer<A> & {
-  items: Array<B>
-  item: A
-}
-export type EmitterTestKitchenSinkUnionOk = {
-  "@type": "Ok"
-}
-export type EmitterTestKitchenSinkUnionUhoh = {
-  "@type": "Uhoh"
-}
-export type EmitterTestKitchenSinkUnionUnion = EmitterTestKitchenSinkUnionOk | EmitterTestKitchenSinkUnionUhoh
-export type EmitterTestKitchenSinkGetResponse = {
-  items?: Array<string> | undefined
-}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink#searchQuery}
+ */
 export type EmitterTestKitchenSinkSearchQuery = {
   q: string
   limit?: number | null | undefined
 }
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Other}
+ * METHOD ref:
+ * - {@link EmitterTestKitchenSink#optional}
+ */
 export type EmitterTestKitchenSinkOther = {
   value: string
+}
+/**
+ * Jvm {@link com.iodesystems.ts.emitter.EmitterTest$KitchenSink$Get$Response}
+ * METHOD ref:
+ * - {@link EmitterTestKitchenSink#get}
+ */
+export type EmitterTestKitchenSinkGetResponse = {
+  items?: Array<string> | undefined
 }
 export class EmitterTestKitchenSink {
   constructor(private opts: ApiOptions = {}) {}
@@ -261,6 +331,9 @@ export class EmitterTestKitchenSink {
     }).then(r=>{})
   }
 }
+
+//</api.ts>
+
 ```
 
 Note: In single-file mode, a small helper library (`ApiOptions`, `fetchInternal`, `flattenQueryParams`) is emitted at the top of `api.ts`. For brevity it’s omitted here.

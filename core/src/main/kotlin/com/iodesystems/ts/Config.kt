@@ -105,13 +105,21 @@ data class Config(
     }
 
     companion object {
-        fun build(fn: Builder.() -> Builder): Config {
+        /**
+         * Build a [Config] using the mutable [Builder] with a chain-style lambda that returns the builder.
+         */
+        fun build(fn: Builder.() -> Unit): Config {
             return Config().build(fn)
         }
     }
 
-    fun build(fn: Builder.() -> Builder): Config {
-        return Builder(this).fn().config
+    /**
+     * Build a copy of this [Config] using the mutable [Builder] with chain-style lambda.
+     */
+    fun build(fn: Builder.() -> Unit): Config {
+        val builder = Builder(this)
+        builder.fn()
+        return builder.config
     }
 
     private val regexCache = mutableMapOf<String, Regex>()
@@ -146,99 +154,101 @@ data class Config(
     fun jvmExtractor() = JvmExtractor(this)
     fun apiExtractor() = SpringApiExtractor(this)
 
-    data class Builder(
-        val config: Config = Config(),
+    /**
+     * Mutable builder for [Config]. Methods mutate internal [config] and return this builder, so you can
+     * either chain calls or call them as separate statements.
+     */
+    class Builder(
+        var config: Config = Config(),
     ) {
-        fun omitTypes(vararg fqns: String) = copy(config = config.run { copy(omitTypes = fqns.toList()) })
-        fun setsAsArrays(set: Boolean = true) = copy(config = config.run { copy(setsAsArrays = set) })
-        fun includeRefComments(set: Boolean = true) = copy(config = config.run { copy(includeRefComments = set) })
+        /** Replace the list of FQCN prefixes to omit entirely from type emission. */
+        fun omitTypes(vararg fqns: String): Builder { config = config.copy(omitTypes = fqns.toList()); return this }
 
+        /** Treat Kotlin/Java `Set` like an array in TypeScript (default true). */
+        fun setsAsArrays(set: Boolean = true): Builder { config = config.copy(setsAsArrays = set); return this }
+
+        /** Emit `// ref:` comments alongside TS types to show original JVM names. */
+        fun includeRefComments(set: Boolean = true): Builder { config = config.copy(includeRefComments = set); return this }
+
+        /** Update classPath urls using a transformation function. Used by the Gradle plugin. */
         fun classPathUrls(f: (List<String>) -> List<String>): Builder {
             val newUrls = f(config.classPathUrls)
-            return copy(config = config.run { copy(classPathUrls = newUrls) })
+            config = config.copy(classPathUrls = newUrls)
+            return this
         }
 
-        fun cleanOutputDir(set: Boolean = true) = copy(config = config.run {
-            copy(cleanOutputDir = set)
-        })
+        /** Clean output directory before writing files. */
+        fun cleanOutputDir(set: Boolean = true): Builder { config = config.copy(cleanOutputDir = set); return this }
 
-        fun outputDirectory(dir: String) = copy(config = config.run {
-            copy(outputDirectory = dir)
-        })
+        /** Destination directory for generated files. */
+        fun outputDirectory(dir: String): Builder { config = config.copy(outputDirectory = dir); return this }
 
-        fun mappedType(map: Map<String, String>) = copy(config = config.run {
-            copy(mappedTypes = mappedTypes + map)
-        })
+        /** Add/override multiple JVM→TS type mappings. */
+        fun mappedTypes(map: Map<String, String>): Builder { config = config.copy(mappedTypes = config.mappedTypes + map); return this }
 
-        fun mappedType(klass: KClass<*>, tsIdentifier: String) = copy(config = config.run {
-            copy(mappedTypes = mappedTypes + (klass.java.name to tsIdentifier))
-        })
+        /** Map a single JVM class to a TS type identifier (e.g., `Dayjs | string`). */
+        fun mappedType(klass: KClass<*>, tsIdentifier: String): Builder {
+            config = config.copy(mappedTypes = config.mappedTypes + (klass.java.name to tsIdentifier)); return this
+        }
 
-        fun apiBasePackages(vararg pkgs: String) = copy(config = config.run {
-            copy(apiBasePackages = pkgs.toList())
-        })
+        /** Packages to scan for Spring controllers and models. */
+        fun apiBasePackages(vararg pkgs: String): Builder { config = config.copy(apiBasePackages = pkgs.toList()); return this }
 
-        inline fun <reified T> includeApi() = includeApi(T::class)
-        fun includeApi(vararg classes: KClass<*>) = copy(config = config.run {
-            copy(includeApiIncludes = includeApiIncludes + classes.map { it.java.name })
-        })
+        /** Include specific API controllers by class (adds to include patterns). */
+        inline fun <reified T> includeApi(): Builder = includeApi(T::class)
+        fun includeApi(vararg classes: KClass<*>): Builder {
+            config = config.copy(includeApiIncludes = config.includeApiIncludes + classes.map { it.java.name })
+            return this
+        }
 
-        fun includeApis(vararg patterns: String) = copy(config = config.run {
-            copy(includeApiIncludes = patterns.toList())
-        })
+        /** Set include patterns (FQCN or regex). Empty means include all. */
+        fun includeApis(vararg patterns: String): Builder { config = config.copy(includeApiIncludes = patterns.toList()); return this }
 
-        fun excludeApis(vararg patterns: String) = copy(config = config.run {
-            copy(includeApiExcludes = patterns.toList())
-        })
+        /** Set exclude patterns (FQCN or regex). */
+        fun excludeApis(vararg patterns: String): Builder { config = config.copy(includeApiExcludes = patterns.toList()); return this }
 
-        fun optionalAnnotations(vararg fqns: String) = copy(config = config.run {
-            copy(optionalAnnotations = fqns.toSet())
-        })
+        /** Set optional-annotated FQCNs (treat annotated fields/params as optional). */
+        fun optionalAnnotations(vararg fqns: String): Builder { config = config.copy(optionalAnnotations = fqns.toSet()); return this }
 
-        fun addOptionalAnnotations(vararg fqns: String) = copy(config = config.run {
-            copy(optionalAnnotations = optionalAnnotations + fqns)
-        })
+        /** Add optional-annotated FQCNs to the current set. */
+        fun addOptionalAnnotations(vararg fqns: String): Builder { config = config.copy(optionalAnnotations = config.optionalAnnotations + fqns); return this }
 
-        fun nullableAnnotations(vararg fqns: String) = copy(config = config.run {
-            copy(nullableAnnotations = fqns.toSet())
-        })
+        /** Set nullable-annotated FQCNs (treat annotated fields/params as nullable). */
+        fun nullableAnnotations(vararg fqns: String): Builder { config = config.copy(nullableAnnotations = fqns.toSet()); return this }
 
-        fun addNullableAnnotations(vararg fqns: String) = copy(config = config.run {
-            copy(nullableAnnotations = nullableAnnotations + fqns)
-        })
+        /** Add nullable-annotated FQCNs to the current set. */
+        fun addNullableAnnotations(vararg fqns: String): Builder { config = config.copy(nullableAnnotations = config.nullableAnnotations + fqns); return this }
 
-        // Enable separate library output file name (default "api-lib.ts")
-        fun emitLibAsSeparateFile(name: String = "api-lib.ts") =
-            copy(config = config.run { copy(emitLibFileName = name) })
+        /** Emit library helpers to a separate file (default name `api-lib.ts`). */
+        fun emitLibAsSeparateFile(name: String = "api-lib.ts"): Builder { config = config.copy(emitLibFileName = name); return this }
 
-        fun groupApis(grouping: Map<String, List<String>>) = copy(config = config.run {
-            copy(groupApiFile = grouping)
-        })
+        /** Group specific controllers into named API files. Key = output TS filename, value = controller FQCNs. */
+        fun groupApis(grouping: Map<String, List<String>>): Builder { config = config.copy(groupApiFile = grouping); return this }
 
-        fun typesFileName(name: String) = copy(config = config.run { copy(typesFileName = name) })
+        /** Set the shared types file name (used when grouping or splitting types). */
+        fun typesFileName(name: String): Builder { config = config.copy(typesFileName = name); return this }
 
-        // Enable emitting a separate types file. Optionally override the file name.
-        fun emitTypesAsSeparateFile(name: String = "api-types.ts") = copy(config = config.run {
-            copy(typesFileName = name)
-        })
+        /** Enable emitting a separate shared types file. Optionally override the default name. */
+        fun emitTypesAsSeparateFile(name: String = "api-types.ts"): Builder { config = config.copy(typesFileName = name); return this }
 
-        fun typeNameReplacements(mapping: Map<String, String>) = copy(config = config.run {
-            copy(typeNameReplacements = mapping)
-        })
+        /** Replace type simple names using regex→replacement mapping. */
+        fun typeNameReplacements(mapping: Map<String, String>): Builder { config = config.copy(typeNameReplacements = mapping); return this }
 
-        fun addTypeNameReplacement(pattern: String, replacement: String) = copy(config = config.run {
-            copy(typeNameReplacements = typeNameReplacements + (pattern to replacement))
-        })
+        /** Add a single regex replacement rule for type simple names. */
+        fun addTypeNameReplacement(pattern: String, replacement: String): Builder {
+            config = config.copy(typeNameReplacements = config.typeNameReplacements + (pattern to replacement)); return this
+        }
 
-        fun externalImportLines(vararg pairs: Pair<String, String>) = externalImportLines(pairs.toMap())
+        /** Convenience overload to set external import lines. */
+        fun externalImportLines(vararg pairs: Pair<String, String>): Builder = externalImportLines(pairs.toMap())
 
-        fun externalImportLines(mapping: Map<String, String>) = copy(config = config.run {
-            copy(externalImportLines = mapping)
-        })
+        /** Set external TS import lines: simple name → full import statement string. */
+        fun externalImportLines(mapping: Map<String, String>): Builder { config = config.copy(externalImportLines = mapping); return this }
 
-        fun addExternalImportLine(name: String, importLine: String) = copy(config = config.run {
-            copy(externalImportLines = externalImportLines + (name to importLine))
-        })
+        /** Add one external TS import line. */
+        fun addExternalImportLine(name: String, importLine: String): Builder {
+            config = config.copy(externalImportLines = config.externalImportLines + (name to importLine)); return this
+        }
     }
 
 }

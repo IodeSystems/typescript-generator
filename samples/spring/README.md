@@ -30,10 +30,12 @@ File names are configured in `build.gradle.kts`:
 
 ```
 generateTypescript {
-    emitLibFileName = "api-lib.ts"
-    typesFileName = "api-types.ts"
-    outputDirectory = "src/main/ui/gen"
-    // ...additional mappings
+    config {
+        emitLibAsSeparateFile("api-lib.ts")
+        emitTypesAsSeparateFile("api-types.ts")
+        outputDirectory("src/main/ui/gen")
+        // ...additional mappings via builder methods
+    }
 }
 ```
 

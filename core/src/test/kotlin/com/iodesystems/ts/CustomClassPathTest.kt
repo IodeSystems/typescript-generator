@@ -13,7 +13,7 @@ class CustomClassPathTest {
             apiBasePackages("com.iodesystems.web.api")
                 .emitLibAsSeparateFile()
                 .emitTypesAsSeparateFile()
-                .mappedType(
+                .mappedTypes(
                     mapOf(
                         "com.yubico.webauthn.data.ByteArray" to "string",
                         "com.yubico.webauthn.data.AuthenticatorTransport" to "string",
