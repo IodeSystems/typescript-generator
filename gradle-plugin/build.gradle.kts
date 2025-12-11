@@ -1,10 +1,7 @@
 plugins {
     id("kotlin-conventions")
     id("com.gradle.plugin-publish")
-    `maven-publish`
-    signing
 }
-
 
 group = rootProject.group.toString()
 version = rootProject.version.toString()
@@ -16,24 +13,16 @@ dependencies {
     testImplementation(gradleTestKit())
 }
 
-java {
-    withSourcesJar()
-    withJavadocJar()
-}
-signing {
-    useGpgCmd()
-    sign(publishing.publications)
-}
-
 gradlePlugin {
     website = "https://github.com/IodeSystems/typescript-generator"
     vcsUrl = website
+    description = project.description
     plugins {
-        create("typescriptGeneratorPlugin") {
+        create("typescriptGenerator") {
             id = "com.iodesystems.typescript-generator"
             implementationClass = "com.iodesystems.ts.TypeScriptGeneratorPlugin"
-            description = project.description
             tags.addAll(listOf("typescript", "codegen", "typescript-generator"))
+            displayName = "Typescript Generator Gradle Plugin"
         }
     }
 }

@@ -29,32 +29,34 @@ tasks.publishToMavenLocal {
 }
 
 subprojects {
-    val artifactName = joinName(project)
+    apply(plugin = "java")
+    apply(plugin = "maven-publish")
+    apply(plugin = "signing")
 
-    if (listOf(
-            "core",
-            // "gradle-plugin" // This is handled by the gradle-plugin-plugin
-        ).contains(artifactName)
-    ) {
-        apply(plugin = "java")
-        apply(plugin = "maven-publish")
-        apply(plugin = "signing")
-        group = rootProject.group.toString()
-        version = rootProject.version.toString()
 
-        java {
-            withSourcesJar()
-            withJavadocJar()
-        }
-        signing {
-            useGpgCmd()
-            sign(publishing.publications)
-        }
-        publishing {
+    group = rootProject.group.toString()
+    version = rootProject.version.toString()
+
+    java {
+        withSourcesJar()
+        withJavadocJar()
+    }
+    signing {
+        useGpgCmd()
+        sign(publishing.publications)
+    }
+    publishing {
+        if (project.name == "core") {
             publications {
-                create<MavenPublication>("mavenJava") {
-                    artifactId = artifactName
+                create<MavenPublication>("java") {
                     from(components["java"])
+                }
+            }
+        }
+        afterEvaluate {
+            publications {
+                withType<MavenPublication> {
+                    artifactId = joinName(project)
                     pom {
                         name.set(project.name)
                         description.set(project.description.let {
@@ -90,5 +92,9 @@ subprojects {
                 }
             }
         }
+    }
+    val signingTasks = tasks.withType<Sign>()
+    tasks.withType<AbstractPublishToMaven>().configureEach {
+        dependsOn(signingTasks)
     }
 }
