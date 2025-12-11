@@ -33,7 +33,7 @@ tasks.register("versionGet") {
 tasks.register("versionSet") {
     group = "release"
     val overrideVersion = properties["overrideVersion"]
-    val updateMode = properties["updateMode"]!!.toString()
+    val updateMode = (properties["updateMode"] ?: "patch").toString()
     val version = properties["version"]!!.toString()
     doLast {
         val newVersion = Release.generateVersion(version, updateMode, overrideVersion?.toString())

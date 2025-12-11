@@ -37,8 +37,8 @@ object Release {
             lines.map { line ->
                 if (!line.startsWith("gradle-typescript-generator")) line
                 else "gradle-typescript-generator = \"com.iodesystems.typescript-generator:com.iodesystems.typescript-generator.gradle.plugin:$newVersion\""
-            }
-        }.joinToString("\n").let { newLines -> sampleVersions.writeText(newLines) }
+            }.joinToString("\n")
+        }.let { newLines -> sampleVersions.writeText(newLines) }
 
     }
 }
