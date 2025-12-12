@@ -83,10 +83,12 @@ tasks.register("releasePublish") {
     val overrideVersion = properties["overrideVersion"]?.toString()
     val version = properties["version"]!!.toString()
     doLast {
+        val status = "git status --porcelain".bash().output.trim()
+        if (status.isNotEmpty()) throw GradleException("There are changes in the working directory:\n$status")
         val oldVersion = version
         val newVersion = Release.generateVersion(version, "dev", overrideVersion)
         Release.writeVersion(newVersion, oldVersion)
-        "git add build.gradle.kts".bash()
+        "git add .".bash()
         "git commit -m 'Prepare next development iteration: $newVersion'".bash()
         "git push".bash()
         "git push --tags".bash()
