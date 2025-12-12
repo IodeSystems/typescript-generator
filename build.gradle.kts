@@ -1,5 +1,5 @@
 group = "com.iodesystems.typescript-generator"
-version = "0.0.13-SNAPSHOT"
+version = "0.0.13"
 description = "Typescript Client Generator"
 
 repositories {
