@@ -188,6 +188,11 @@ class Emitter(
         fun createWriteContext(file: String): WriteContext {
             return writeContexts.getOrPut(file) {
                 val ctx = WriteContext(outputDir.resolve(file))
+                // Write configured header lines at the top of every generated file
+                config.headerLines.forEach { line ->
+                    ctx.write(line)
+                    if (!line.endsWith("\n")) ctx.write("\n")
+                }
                 if (!isLibExternal || file != libFile) {
                     config.externalImportLines.forEach { (_, line) ->
                         ctx.write(line + "\n")

@@ -43,6 +43,20 @@ class EmitterTest {
         }
     }
 
+    @Test
+    fun headersAreEmitted() {
+        val emitter = emitter(Simple::class) { eslintDisable() }
+        val result = emitter.ts().content(includeLib = true)
+        result.assertContains(
+            "/* eslint-disable @typescript-eslint/no-explicit-any */",
+            "should include eslint disable for no-explicit-any at top of files"
+        )
+        result.assertContains(
+            "/* eslint-disable @typescript-eslint/no-unused-vars */",
+            "should include eslint disable for no-unused-vars at top of files"
+        )
+    }
+
     @RestController
     @RequestMapping
     class Simple {

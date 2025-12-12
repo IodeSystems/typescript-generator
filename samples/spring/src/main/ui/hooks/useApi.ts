@@ -1,3 +1,4 @@
+import {createContext, useContext, useMemo} from "react";
 import {ApiOptions} from "../gen/api-lib";
 
 export type ObjectKey = string | number | symbol
@@ -16,18 +17,16 @@ export function bind<T extends Record<ObjectKey, unknown>>(t: T) {
   return bound as unknown as T
 }
 
-// Don't create too many
-const cache = new Map<string, unknown>()
+export const ApiContext = createContext<ApiOptions>({})
 
-
-// If we want to globally set ApiOptions, we would use an ApiContext that would provide them
-// And return a memo based on the api options for the cache instead of using a global one.
-export default function useApi<T>(
+export function useApi<T>(
   ctor: { new(opts: ApiOptions): T }
 ) {
+  const apiOptions = useContext(ApiContext)
+  const cache = useMemo(() => new Map<string, unknown>(), [apiOptions])
   const existing: unknown = cache.get(ctor.name)
   if (existing) return existing as T
-  const api = new ctor({})
+  const api = new ctor(apiOptions)
   cache.set(ctor.name, api)
   return api
 }

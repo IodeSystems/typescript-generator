@@ -74,6 +74,8 @@ data class Config(
     // Map of external TypeScript type simple name -> full import line to emit as-is
     // Example: "Dayjs" -> "import {Dayjs} from 'dayjs'"
     val externalImportLines: Map<String, String> = emptyMap(),
+    // Lines to write at the top of every generated TS file (in order). Useful for lint directives.
+    val headerLines: List<String> = emptyList(),
     // Enables extra diagnostic logs from heavy phases (type registration, queue sizes, memory snapshots).
     // Keep default false to avoid overhead in normal runs.
     val diagnosticLogging: Boolean = false,
@@ -97,6 +99,7 @@ data class Config(
                 groupApiFile?.let { "groupApiFile=$it" },
                 typesFileName?.let { "typesFileName='$it'" },
                 if (externalImportLines.isNotEmpty()) "externalImportLines=$externalImportLines" else null,
+                if (headerLines.isNotEmpty()) "headerLines=$headerLines" else null,
                 if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null
             )
             append(props.joinToString(", "))
@@ -162,13 +165,19 @@ data class Config(
         var config: Config = Config(),
     ) {
         /** Replace the list of FQCN prefixes to omit entirely from type emission. */
-        fun omitTypes(vararg fqns: String): Builder { config = config.copy(omitTypes = fqns.toList()); return this }
+        fun omitTypes(vararg fqns: String): Builder {
+            config = config.copy(omitTypes = fqns.toList()); return this
+        }
 
         /** Treat Kotlin/Java `Set` like an array in TypeScript (default true). */
-        fun setsAsArrays(set: Boolean = true): Builder { config = config.copy(setsAsArrays = set); return this }
+        fun setsAsArrays(set: Boolean = true): Builder {
+            config = config.copy(setsAsArrays = set); return this
+        }
 
         /** Emit `// ref:` comments alongside TS types to show original JVM names. */
-        fun includeRefComments(set: Boolean = true): Builder { config = config.copy(includeRefComments = set); return this }
+        fun includeRefComments(set: Boolean = true): Builder {
+            config = config.copy(includeRefComments = set); return this
+        }
 
         /** Update classPath urls using a transformation function. Used by the Gradle plugin. */
         fun classPathUrls(f: (List<String>) -> List<String>): Builder {
@@ -178,13 +187,19 @@ data class Config(
         }
 
         /** Clean output directory before writing files. */
-        fun cleanOutputDir(set: Boolean = true): Builder { config = config.copy(cleanOutputDir = set); return this }
+        fun cleanOutputDir(set: Boolean = true): Builder {
+            config = config.copy(cleanOutputDir = set); return this
+        }
 
         /** Destination directory for generated files. */
-        fun outputDirectory(dir: String): Builder { config = config.copy(outputDirectory = dir); return this }
+        fun outputDirectory(dir: String): Builder {
+            config = config.copy(outputDirectory = dir); return this
+        }
 
         /** Add/override multiple JVM→TS type mappings. */
-        fun mappedTypes(map: Map<String, String>): Builder { config = config.copy(mappedTypes = config.mappedTypes + map); return this }
+        fun mappedTypes(map: Map<String, String>): Builder {
+            config = config.copy(mappedTypes = config.mappedTypes + map); return this
+        }
 
         /** Map a single JVM class to a TS type identifier (e.g., `Dayjs | string`). */
         fun mappedType(klass: KClass<*>, tsIdentifier: String): Builder {
@@ -192,7 +207,9 @@ data class Config(
         }
 
         /** Packages to scan for Spring controllers and models. */
-        fun apiBasePackages(vararg pkgs: String): Builder { config = config.copy(apiBasePackages = pkgs.toList()); return this }
+        fun apiBasePackages(vararg pkgs: String): Builder {
+            config = config.copy(apiBasePackages = pkgs.toList()); return this
+        }
 
         /** Include specific API controllers by class (adds to include patterns). */
         inline fun <reified T> includeApi(): Builder = includeApi(T::class)
@@ -202,52 +219,96 @@ data class Config(
         }
 
         /** Set include patterns (FQCN or regex). Empty means include all. */
-        fun includeApis(vararg patterns: String): Builder { config = config.copy(includeApiIncludes = patterns.toList()); return this }
+        fun includeApis(vararg patterns: String): Builder {
+            config = config.copy(includeApiIncludes = patterns.toList()); return this
+        }
 
         /** Set exclude patterns (FQCN or regex). */
-        fun excludeApis(vararg patterns: String): Builder { config = config.copy(includeApiExcludes = patterns.toList()); return this }
+        fun excludeApis(vararg patterns: String): Builder {
+            config = config.copy(includeApiExcludes = patterns.toList()); return this
+        }
 
         /** Set optional-annotated FQCNs (treat annotated fields/params as optional). */
-        fun optionalAnnotations(vararg fqns: String): Builder { config = config.copy(optionalAnnotations = fqns.toSet()); return this }
+        fun optionalAnnotations(vararg fqns: String): Builder {
+            config = config.copy(optionalAnnotations = fqns.toSet()); return this
+        }
 
         /** Add optional-annotated FQCNs to the current set. */
-        fun addOptionalAnnotations(vararg fqns: String): Builder { config = config.copy(optionalAnnotations = config.optionalAnnotations + fqns); return this }
+        fun addOptionalAnnotations(vararg fqns: String): Builder {
+            config = config.copy(optionalAnnotations = config.optionalAnnotations + fqns); return this
+        }
 
         /** Set nullable-annotated FQCNs (treat annotated fields/params as nullable). */
-        fun nullableAnnotations(vararg fqns: String): Builder { config = config.copy(nullableAnnotations = fqns.toSet()); return this }
+        fun nullableAnnotations(vararg fqns: String): Builder {
+            config = config.copy(nullableAnnotations = fqns.toSet()); return this
+        }
 
         /** Add nullable-annotated FQCNs to the current set. */
-        fun addNullableAnnotations(vararg fqns: String): Builder { config = config.copy(nullableAnnotations = config.nullableAnnotations + fqns); return this }
+        fun addNullableAnnotations(vararg fqns: String): Builder {
+            config = config.copy(nullableAnnotations = config.nullableAnnotations + fqns); return this
+        }
 
         /** Emit library helpers to a separate file (default name `api-lib.ts`). */
-        fun emitLibAsSeparateFile(name: String = "api-lib.ts"): Builder { config = config.copy(emitLibFileName = name); return this }
+        fun emitLibAsSeparateFile(name: String = "api-lib.ts"): Builder {
+            config = config.copy(emitLibFileName = name); return this
+        }
 
         /** Group specific controllers into named API files. Key = output TS filename, value = controller FQCNs. */
-        fun groupApis(grouping: Map<String, List<String>>): Builder { config = config.copy(groupApiFile = grouping); return this }
+        fun groupApis(grouping: Map<String, List<String>>): Builder {
+            config = config.copy(groupApiFile = grouping); return this
+        }
 
         /** Set the shared types file name (used when grouping or splitting types). */
-        fun typesFileName(name: String): Builder { config = config.copy(typesFileName = name); return this }
+        fun typesFileName(name: String): Builder {
+            config = config.copy(typesFileName = name); return this
+        }
 
         /** Enable emitting a separate shared types file. Optionally override the default name. */
-        fun emitTypesAsSeparateFile(name: String = "api-types.ts"): Builder { config = config.copy(typesFileName = name); return this }
+        fun emitTypesAsSeparateFile(name: String = "api-types.ts"): Builder {
+            config = config.copy(typesFileName = name); return this
+        }
 
         /** Replace type simple names using regex→replacement mapping. */
-        fun typeNameReplacements(mapping: Map<String, String>): Builder { config = config.copy(typeNameReplacements = mapping); return this }
+        fun typeNameReplacements(mapping: Map<String, String>): Builder {
+            config = config.copy(typeNameReplacements = mapping); return this
+        }
 
         /** Add a single regex replacement rule for type simple names. */
         fun addTypeNameReplacement(pattern: String, replacement: String): Builder {
-            config = config.copy(typeNameReplacements = config.typeNameReplacements + (pattern to replacement)); return this
+            config =
+                config.copy(typeNameReplacements = config.typeNameReplacements + (pattern to replacement)); return this
         }
 
         /** Convenience overload to set external import lines. */
         fun externalImportLines(vararg pairs: Pair<String, String>): Builder = externalImportLines(pairs.toMap())
 
         /** Set external TS import lines: simple name → full import statement string. */
-        fun externalImportLines(mapping: Map<String, String>): Builder { config = config.copy(externalImportLines = mapping); return this }
+        fun externalImportLines(mapping: Map<String, String>): Builder {
+            config = config.copy(externalImportLines = mapping); return this
+        }
 
         /** Add one external TS import line. */
         fun addExternalImportLine(name: String, importLine: String): Builder {
             config = config.copy(externalImportLines = config.externalImportLines + (name to importLine)); return this
+        }
+
+        /** Set static header lines to be written at the top of every generated TS file. */
+        fun headerLines(vararg lines: String): Builder {
+            config = config.copy(headerLines = lines.toList()); return this
+        }
+
+        fun eslintDisable(
+            disableNoExplicitAny: Boolean = true,
+            disableNoUnusedVars: Boolean = true,
+            vararg otherRulesToDisable: String,
+        ): Builder {
+            val lines = mutableListOf<String>()
+            if (disableNoExplicitAny) lines += "/* eslint-disable @typescript-eslint/no-explicit-any */"
+            if (disableNoUnusedVars) lines += "/* eslint-disable @typescript-eslint/no-unused-vars */"
+            otherRulesToDisable.forEach { rule ->
+                lines += "/* eslint-disable $rule */"
+            }
+            return headerLines(*lines.toTypedArray())
         }
     }
 
