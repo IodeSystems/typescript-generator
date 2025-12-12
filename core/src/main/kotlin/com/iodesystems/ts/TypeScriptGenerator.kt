@@ -8,8 +8,8 @@ class TypeScriptGenerator(
     val log = logger()
 
     companion object {
-        fun build(builder: (Config.Builder) -> Config.Builder): TypeScriptGenerator {
-            return TypeScriptGenerator(builder(Config.Builder()).config)
+        fun build(builder: Config.Builder.() -> Config.Builder): TypeScriptGenerator {
+            return TypeScriptGenerator(Config.Builder().builder().config)
         }
     }
 

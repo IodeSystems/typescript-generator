@@ -55,12 +55,11 @@ class ErrorsAndVoidBehaviorTest {
     fun customNamingCollisionProducesHelpfulError() {
         val ex = assertThrows(IllegalStateException::class.java) {
             TypeScriptGenerator.build {
-                it
-                    .includeApi(
-                        CollisionControllerA::class,
-                        CollisionControllerB::class,
-                    )
-                    .addTypeNameReplacement(".*", "Fixed")
+                includeApi(
+                    CollisionControllerA::class,
+                    CollisionControllerB::class,
+                )
+                addTypeNameReplacement(".*", "Fixed")
             }.generate()
         }
         assertTrue(ex.message!!.contains("Type alias name collision"))
@@ -70,7 +69,7 @@ class ErrorsAndVoidBehaviorTest {
     fun duplicateQueryParamNamesError() {
         val ex = assertThrows(IllegalStateException::class.java) {
             TypeScriptGenerator.build {
-                it.includeApi(DuplicateQueryParamController::class)
+                includeApi(DuplicateQueryParamController::class)
             }.generate()
         }
         assertTrue(ex.message!!.contains("Duplicate query parameter name"))
@@ -80,7 +79,7 @@ class ErrorsAndVoidBehaviorTest {
     fun postWithoutBodyErrors() {
         // New rule: body is optional for non-GET; ensure no exception is thrown for POST without body
         TypeScriptGenerator.build {
-            it.includeApi<PostWithoutBodyController>()
+            includeApi<PostWithoutBodyController>()
         }.generate()
     }
 
