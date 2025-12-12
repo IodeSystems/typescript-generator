@@ -48,14 +48,11 @@ tasks.register("releaseStripSnapshotCommitAndTag") {
     val version = properties["version"]!!.toString()
     doLast {
         val status = "git status --porcelain".bash().output.trim()
-        if (status.isNotEmpty()) {
-            throw GradleException("There are changes in the working directory:\n$status")
-        }
+        if (status.isNotEmpty()) throw GradleException("There are changes in the working directory:\n$status")
         val oldVersion = version
         val newVersion = oldVersion.removeSuffix("-SNAPSHOT")
         Release.writeVersion(newVersion, oldVersion)
-        // Validate build
-        "git add build.gradle.kts".bash()
+        "git add .".bash()
         "git commit -m 'Release $newVersion'".bash()
         "git tag -a v$newVersion -m 'Release $newVersion'".bash()
     }
@@ -74,25 +71,11 @@ tasks.register("releaseRevert") {
 }
 tasks.register("releasePublish") {
     group = "release"
-
     dependsOn(
         tasks.clean, tasks.build,
         subprojects.map { project -> project.tasks.publish },
         tasks.closeAndReleaseStagingRepositories
     )
-    val overrideVersion = properties["overrideVersion"]?.toString()
-    val version = properties["version"]!!.toString()
-    doLast {
-        val status = "git status --porcelain".bash().output.trim()
-        if (status.isNotEmpty()) throw GradleException("There are changes in the working directory:\n$status")
-        val oldVersion = version
-        val newVersion = Release.generateVersion(version, "dev", overrideVersion)
-        Release.writeVersion(newVersion, oldVersion)
-        "git add .".bash()
-        "git commit -m 'Prepare next development iteration: $newVersion'".bash()
-        "git push".bash()
-        "git push --tags".bash()
-    }
 }
 tasks.register("releasePrepareNextDevelopmentIteration") {
     group = "release"
