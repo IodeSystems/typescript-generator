@@ -1,8 +1,8 @@
 package com.iodesystems.ts.adapter
 
 import com.fasterxml.jackson.annotation.*
-import com.iodesystems.ts.extractor.TypeShim
-import io.github.classgraph.AnnotationEnumValue
+import com.iodesystems.ts.adapter.JsonAdapter.ResolvedDiscriminatedSubTypes
+import com.iodesystems.ts.adapter.JsonAdapter.TsFieldInspection
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
@@ -14,7 +14,13 @@ class JacksonJsonAdapter : JsonAdapter {
         // and computing the serialized values for each constant. Fallback to default behavior
         // (the enum constant names) if anything is missing or fails.
 
-        val clazz = scan.getClassInfo(enumFqdn).loadClass()
+        // Try to load the class - it might not be in the scanned packages but still on the classpath
+        val clazz = try {
+            scan.getClassInfo(enumFqdn)?.loadClass()
+                ?: Class.forName(enumFqdn)
+        } catch (_: Exception) {
+            return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
+        }
         if (!clazz.isEnum) return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
 
         // Find a zero-arg method annotated with @JsonValue
@@ -125,32 +131,39 @@ class JacksonJsonAdapter : JsonAdapter {
 
     override fun resolveDiscriminatedSubTypes(
         scan: ScanResult,
-        shim: TypeShim,
+        clazz: Class<*>,
     ): ResolvedDiscriminatedSubTypes? {
-        val jsonTypeInfo = shim.getClassAnnotation(JsonTypeInfo::class.java.name) ?: return null
-        val useParam = jsonTypeInfo.parameterValues
-            .firstOrNull { it.name == "use" }?.value as? AnnotationEnumValue
-        val id = JsonTypeInfo.Id.valueOf(useParam?.valueName!!)
-        val discriminatorProperty = (jsonTypeInfo.parameterValues
-            .firstOrNull { it.name == "property" }
-            ?.value as? String).let {
-            if (it.isNullOrBlank()) id.defaultPropertyName else it
+        val jsonTypeInfo = clazz.getAnnotation(JsonTypeInfo::class.java) ?: return null
+        val id = jsonTypeInfo.use
+        val discriminatorProperty = jsonTypeInfo.property.ifBlank { id.defaultPropertyName }
+
+        // First try ClassGraph scan for implementations (works for classes within scanned packages)
+        var implClasses = scan.getClassesImplementing(clazz.name)
+            .sortedBy { it.simpleName }
+            .map { it.loadClass() }
+
+        // If ClassGraph didn't find any, use Java reflection for sealed classes/interfaces
+        // This handles types from external packages that aren't in the scan path
+        if (implClasses.isEmpty()) {
+            implClasses = try {
+                clazz.permittedSubclasses?.map { it }?.sortedBy { it.simpleName } ?: emptyList()
+            } catch (_: Throwable) {
+                emptyList()
+            }
         }
 
-        val impls = scan.getClassesImplementing(shim.fqcn()).sortedBy { it.simpleName }
-        val options = impls.map { impl ->
+        val options = implClasses.map { implClass ->
             val discValue = when (id) {
-                JsonTypeInfo.Id.CLASS -> impl.name
-                JsonTypeInfo.Id.SIMPLE_NAME -> impl.simpleName
+                JsonTypeInfo.Id.CLASS -> implClass.name
+                JsonTypeInfo.Id.SIMPLE_NAME -> implClass.simpleName
                 JsonTypeInfo.Id.NAME -> {
-                    val jtn = impl.annotationInfo.get(JsonTypeName::class.java.name)
-                    val v = jtn?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
-                    v ?: impl.simpleName
+                    val jtn = implClass.getAnnotation(JsonTypeName::class.java)
+                    jtn?.value?.takeIf { it.isNotBlank() } ?: implClass.simpleName
                 }
 
                 else -> error("Unsupported type $id")
             }
-            SubtypeOption(TypeShim.forClassInfo(impl), discValue)
+            JsonAdapter.SubtypeOption(implClass, discValue)
         }
         return ResolvedDiscriminatedSubTypes(discriminatorProperty, options)
     }

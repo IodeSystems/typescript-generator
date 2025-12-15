@@ -19,7 +19,7 @@ class TaskDelegationTest {
         ext.config {
             outputDirectory("./delegated")
                 .emitLibAsSeparateFile("api-lib.ts")
-                .excludeApis("Internal.*")
+                .packageReject("Internal.*")
                 .typeNameReplacements(mapOf("[.$]" to ""))
         }
 
@@ -38,8 +38,8 @@ class TaskDelegationTest {
         )
         assertEquals(
             listOf("Internal.*"),
-            built.includeApiExcludes,
-            "Config built from extension lambda should reflect includeApiExcludes"
+            built.packageReject,
+            "Config built from extension lambda should reflect packageReject"
         )
         assertEquals(
             mapOf("[.$]" to ""),

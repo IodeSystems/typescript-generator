@@ -1,12 +1,11 @@
 package com.iodesystems.ts.extractor
 
-import com.iodesystems.ts.Config
-import com.iodesystems.ts.Scanner
 import com.iodesystems.ts.lib.Asserts.assertEq
 import com.iodesystems.ts.lib.Asserts.assertIsEmpty
 import com.iodesystems.ts.lib.Asserts.assertNonNull
 import com.iodesystems.ts.lib.Asserts.assertSingle
 import com.iodesystems.ts.lib.Asserts.assertType
+import com.iodesystems.ts.lib.TestUtils.extract
 import com.iodesystems.ts.model.TsType
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -15,16 +14,6 @@ import org.springframework.web.bind.annotation.RestController
 import kotlin.test.Test
 
 class PrimitiveExtractorTest {
-
-    companion object {
-        inline fun <reified T> extract(): JvmExtractor.Extraction {
-            val config = Config().build { includeApi(T::class) }
-            val scan = Scanner(config).scan()
-            val apiRegistry = config.apiExtractor().extract(scan)
-            return JvmExtractor(config).buildFromRegistry(scan, apiRegistry)
-        }
-    }
-
     @RestController
     @RequestMapping("/kotlin-primitives")
     class KotlinPrimitiveController {
@@ -89,15 +78,15 @@ class PrimitiveExtractorTest {
                 .assertNonNull("Missing method '$methodName'")
             m.requestBodyType.assertNonNull("$methodName should have request body")
                 .let { t ->
-                    t.tsName.assertEq(ts, "$methodName request should be $ts")
-                    t.isNullable.assertEq(false, "$methodName should not be nullable")
-                    t.isOptional.assertEq(false, "$methodName should not be optional")
+                    t.name.assertEq(ts, "$methodName request should be $ts")
+                    t.nullable.assertEq(false, "$methodName should not be nullable")
+                    t.optional.assertEq(false, "$methodName should not be optional")
                 }
             m.responseBodyType.assertNonNull("$methodName should have response body")
                 .let { t ->
-                    t.tsName.assertEq(ts, "$methodName response should be $ts")
-                    t.isNullable.assertEq(false, "$methodName response should not be nullable")
-                    t.isOptional.assertEq(false, "$methodName response should not be optional")
+                    t.name.assertEq(ts, "$methodName response should be $ts")
+                    t.nullable.assertEq(false, "$methodName response should not be nullable")
+                    t.optional.assertEq(false, "$methodName response should not be optional")
                 }
         }
 
@@ -108,9 +97,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("listInt response missing")
                 .assertType<TsType.Inline>("listInt should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Array<T>", "Kotlin List should be Array<T>")
-                    t.tsGenericParameters["T"].assertNonNull("List<T> missing T")
-                        .let { el -> el.tsName.assertEq("number", "List<Int> should be number") }
+                    t.name.assertEq("Array<T>", "Kotlin List should be Array<T>")
+                    t.generics["T"].assertNonNull("List<T> missing T")
+                        .let { el -> el.name.assertEq("number", "List<Int> should be number") }
                 }
         }
 
@@ -120,9 +109,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("setString response missing")
                 .assertType<TsType.Inline>("setString should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Array<T>", "Kotlin Set should be Array<T>")
-                    t.tsGenericParameters["T"].assertNonNull("Array<T> missing T")
-                        .let { el -> el.tsName.assertEq("string", "Array<String> should be string") }
+                    t.name.assertEq("Array<T>", "Kotlin Set should be Array<T>")
+                    t.generics["T"].assertNonNull("Array<T> missing T")
+                        .let { el -> el.name.assertEq("string", "Array<String> should be string") }
                 }
         }
 
@@ -132,11 +121,11 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("mapStringLong response missing")
                 .assertType<TsType.Inline>("mapStringLong should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Record<K,V>", "Kotlin Map should be Record<K,V>")
-                    t.tsGenericParameters["K"].assertNonNull("Map<K,V> missing K")
-                        .let { k -> k.tsName.assertEq("string", "Map<String,*> key should be string") }
-                    t.tsGenericParameters["V"].assertNonNull("Map<K,V> missing V")
-                        .let { v -> v.tsName.assertEq("number", "Map<*,Long> value should be number") }
+                    t.name.assertEq("Record<K,V>", "Kotlin Map should be Record<K,V>")
+                    t.generics["K"].assertNonNull("Map<K,V> missing K")
+                        .let { k -> k.name.assertEq("string", "Map<String,*> key should be string") }
+                    t.generics["V"].assertNonNull("Map<K,V> missing V")
+                        .let { v -> v.name.assertEq("number", "Map<*,Long> value should be number") }
                 }
         }
 
@@ -174,12 +163,12 @@ class PrimitiveExtractorTest {
                 .assertNonNull("Missing Java method '$methodName'")
             m.responseBodyType.assertNonNull("$methodName response should exist")
                 .let { t ->
-                    t.tsName.assertEq(ts, "Java $methodName response should be $ts")
-                    t.isNullable.assertEq(false, "Java $methodName should not be nullable")
-                    t.isOptional.assertEq(false, "Java $methodName should not be optional")
+                    t.name.assertEq(ts, "Java $methodName response should be $ts")
+                    t.nullable.assertEq(false, "Java $methodName should not be nullable")
+                    t.optional.assertEq(false, "Java $methodName should not be optional")
                 }
             m.requestBodyType.assertNonNull("$methodName request should exist")
-                .let { t -> t.tsName.assertEq(ts, "Java $methodName request should be $ts") }
+                .let { t -> t.name.assertEq(ts, "Java $methodName request should be $ts") }
         }
 
         // Collections
@@ -189,9 +178,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("listInteger response missing")
                 .assertType<TsType.Inline>("listInteger should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Array<T>", "Java List should be Array<T>")
-                    t.tsGenericParameters["T"].assertNonNull("List<T> missing T")
-                        .let { el -> el.tsName.assertEq("number", "List<Integer> should be number") }
+                    t.name.assertEq("Array<T>", "Java List should be Array<T>")
+                    t.generics["T"].assertNonNull("List<T> missing T")
+                        .let { el -> el.name.assertEq("number", "List<Integer> should be number") }
                 }
         }
 
@@ -201,9 +190,9 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("setString response missing")
                 .assertType<TsType.Inline>("setString should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Array<T>", "Java Set should be Set<T>")
-                    t.tsGenericParameters["T"].assertNonNull("Array<T> missing T")
-                        .let { el -> el.tsName.assertEq("string", "Array<String> should be string") }
+                    t.name.assertEq("Array<T>", "Java Set should be Set<T>")
+                    t.generics["T"].assertNonNull("Array<T> missing T")
+                        .let { el -> el.name.assertEq("string", "Array<String> should be string") }
                 }
         }
 
@@ -213,11 +202,11 @@ class PrimitiveExtractorTest {
             m.responseBodyType.assertNonNull("mapStringDouble response missing")
                 .assertType<TsType.Inline>("mapStringDouble should be inline")
                 .let { t ->
-                    t.tsName.assertEq("Record<K,V>", "Java Map should be Record<K,V>")
-                    t.tsGenericParameters["K"].assertNonNull("Map<K,V> missing K")
-                        .let { k -> k.tsName.assertEq("string", "Map<String,*> key should be string") }
-                    t.tsGenericParameters["V"].assertNonNull("Map<K,V> missing V")
-                        .let { v -> v.tsName.assertEq("number", "Map<*,Double> value should be number") }
+                    t.name.assertEq("Record<K,V>", "Java Map should be Record<K,V>")
+                    t.generics["K"].assertNonNull("Map<K,V> missing K")
+                        .let { k -> k.name.assertEq("string", "Map<String,*> key should be string") }
+                    t.generics["V"].assertNonNull("Map<K,V> missing V")
+                        .let { v -> v.name.assertEq("number", "Map<*,Double> value should be number") }
                 }
         }
 

@@ -1,7 +1,11 @@
 package com.iodesystems.ts
 
+import com.iodesystems.ts.adapter.JacksonJsonAdapter
+import com.iodesystems.ts.adapter.SpringApiAdapter
+import com.iodesystems.ts.extractor.ApiExtractor
 import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.extractor.SpringApiExtractor
+import io.github.classgraph.ScanResult
 import java.io.Serializable
 import java.time.Duration
 import java.time.LocalDate
@@ -36,7 +40,6 @@ data class Config(
         java.util.Optional::class.qualifiedName!! to "T | null"
     ),
     val outputDirectory: String = "./",
-    val apiBasePackages: List<String> = emptyList(),
     // Fully-qualified annotation class names that should mark a field/param/getter as optional
     // (in addition to library-specific or Kotlin-default rules). Defaults include common nullable
     // annotations for convenience in optional contexts (e.g., request params), and a placeholder
@@ -55,9 +58,10 @@ data class Config(
         "jakarta.annotation.Nullable",
         "org.jetbrains.annotations.Nullable",
     ),
-    // Serializable include/exclude lists for API selection (regex strings). Empty = include all.
-    val includeApiIncludes: List<String> = emptyList(),
-    val includeApiExcludes: List<String> = emptyList(),
+    // Package accept/reject patterns for ClassGraph scanning and API selection.
+    // Supports package prefixes (e.g., "com.example") or regex patterns.
+    val packageAccept: List<String> = emptyList(),
+    val packageReject: List<String> = emptyList(),
     // Regex-based type name replacements. Keys are regex, values are replacement (supports capture groups).
     // Applied to the simple class name to produce the TypeScript alias.
     val typeNameReplacements: Map<String, String> = mapOf(
@@ -89,11 +93,10 @@ data class Config(
                 if (classPathUrls.isNotEmpty()) "classPathUrls=$classPathUrls" else null,
                 if (mappedTypes.isNotEmpty()) "mappedTypes=$mappedTypes" else null,
                 if (outputDirectory != "./") "outputDirectory='$outputDirectory'" else null,
-                if (apiBasePackages.isNotEmpty()) "basePackages=$apiBasePackages" else null,
                 if (optionalAnnotations.isNotEmpty()) "optionalAnnotations=$optionalAnnotations" else null,
                 if (nullableAnnotations.isNotEmpty()) "nullableAnnotations=$nullableAnnotations" else null,
-                if (includeApiIncludes.isNotEmpty()) "includeApiIncludes=$includeApiIncludes" else null,
-                if (includeApiExcludes.isNotEmpty()) "includeApiExcludes=$includeApiExcludes" else null,
+                if (packageAccept.isNotEmpty()) "packageAccept=$packageAccept" else null,
+                if (packageReject.isNotEmpty()) "packageReject=$packageReject" else null,
                 if (typeNameReplacements.isNotEmpty()) "typeNameReplacements=$typeNameReplacements" else null,
                 emitLibFileName?.let { "emitLibFileName='$it'" },
                 groupApiFile?.let { "groupApiFile=$it" },
@@ -133,15 +136,15 @@ data class Config(
 
     fun includeApi(name: String): Boolean {
         val included =
-            if (includeApiIncludes.isEmpty()) true
-            else includeApiIncludes.any {
-                name == it || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
+            if (packageAccept.isEmpty()) true
+            else packageAccept.any {
+                name == it || name.startsWith("$it.") || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
             }
         if (!included) return false
         val excluded =
-            if (includeApiExcludes.isEmpty()) false
-            else includeApiExcludes.any {
-                name == it || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
+            if (packageReject.isEmpty()) false
+            else packageReject.any {
+                name == it || name.startsWith("$it.") || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
             }
         return !excluded
     }
@@ -154,8 +157,15 @@ data class Config(
         return out
     }
 
-    fun jvmExtractor() = JvmExtractor(this)
-    fun apiExtractor() = SpringApiExtractor(this)
+
+    fun jvmExtractor(scan: ScanResult) = JvmExtractor(
+        config = this,
+        jsonAdapter = JacksonJsonAdapter(),
+        apiAdapter = SpringApiAdapter(this),
+        scan = scan
+    )
+
+    fun apiExtractor(): ApiExtractor = SpringApiExtractor(this)
 
     /**
      * Mutable builder for [Config]. Methods mutate internal [config] and return this builder, so you can
@@ -206,26 +216,31 @@ data class Config(
             config = config.copy(mappedTypes = config.mappedTypes + (klass.java.name to tsIdentifier)); return this
         }
 
-        /** Packages to scan for Spring controllers and models. */
-        fun apiBasePackages(vararg pkgs: String): Builder {
-            config = config.copy(apiBasePackages = pkgs.toList()); return this
+        /** Accept packages for scanning (package prefixes or regex). */
+        fun packageAccept(vararg patterns: String): Builder {
+            config = config.copy(packageAccept = patterns.toList()); return this
         }
 
-        /** Include specific API controllers by class (adds to include patterns). */
+        /** Add to accepted packages (package prefixes or regex). */
+        fun addPackageAccept(vararg patterns: String): Builder {
+            config = config.copy(packageAccept = config.packageAccept + patterns.toList()); return this
+        }
+
+        /** Include specific API controllers by class (adds to packageAccept). */
         inline fun <reified T> includeApi(): Builder = includeApi(T::class)
         fun includeApi(vararg classes: KClass<*>): Builder {
-            config = config.copy(includeApiIncludes = config.includeApiIncludes + classes.map { it.java.name })
+            config = config.copy(packageAccept = config.packageAccept + classes.map { it.java.name })
             return this
         }
 
-        /** Set include patterns (FQCN or regex). Empty means include all. */
-        fun includeApis(vararg patterns: String): Builder {
-            config = config.copy(includeApiIncludes = patterns.toList()); return this
+        /** Reject packages from scanning (package prefixes or regex). */
+        fun packageReject(vararg patterns: String): Builder {
+            config = config.copy(packageReject = patterns.toList()); return this
         }
 
-        /** Set exclude patterns (FQCN or regex). */
-        fun excludeApis(vararg patterns: String): Builder {
-            config = config.copy(includeApiExcludes = patterns.toList()); return this
+        /** Add to rejected packages (package prefixes or regex). */
+        fun addPackageReject(vararg patterns: String): Builder {
+            config = config.copy(packageReject = config.packageReject + patterns.toList()); return this
         }
 
         /** Set optional-annotated FQCNs (treat annotated fields/params as optional). */

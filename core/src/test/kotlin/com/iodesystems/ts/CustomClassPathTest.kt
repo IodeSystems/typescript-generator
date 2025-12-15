@@ -1,6 +1,6 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
+import com.iodesystems.ts.lib.TestUtils.emitter
 import kotlin.test.Ignore
 import kotlin.test.Test
 
@@ -9,8 +9,9 @@ class CustomClassPathTest {
     @Test
     @Ignore
     fun testCustomClassPath() {
+        @Suppress("UnusedVariable")
         val em = emitter {
-            apiBasePackages("com.iodesystems.web.api")
+            packageAccept("com.iodesystems.web.api")
             emitLibAsSeparateFile()
             emitTypesAsSeparateFile()
             mappedTypes(

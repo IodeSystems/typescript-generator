@@ -8,9 +8,14 @@
 /buildSrc/build
 /buildSrc/src/main/kotlin/com/iodesystems/build
 /build
+/test-project/build
+/test-project/test-core/build
+/test-project/test-dep/build
 
 .env
 node_modules
 samples/spring/build
 samples/spring/buildSrc/build
 samples/spring/node_modules
+./todo
+./done

@@ -1,8 +1,8 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
 import org.junit.Assert.assertThrows
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test

@@ -2,26 +2,36 @@ package com.iodesystems.ts.adapter
 
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinConstructor
-import com.iodesystems.ts.extractor.TypeShim
+import com.iodesystems.ts.model.TsType
 import io.github.classgraph.*
 import kotlinx.metadata.*
 
-sealed interface TsFieldInspection {
-    data class Field(
-        val ci: ClassInfo,
-        val fi: FieldInfo,
-        val ctorParamAnnotations: List<AnnotationInfo> = emptyList()
-    ) : TsFieldInspection
-
-    data class Getter(
-        val ci: ClassInfo,
-        val mi: MethodInfo,
-        val ctorParamAnnotations: List<AnnotationInfo> = emptyList()
-    ) : TsFieldInspection
-}
 
 // Adapter interface to abstract JSON library specific behaviors (e.g., Jackson)
 interface JsonAdapter {
+    sealed interface TsFieldInspection {
+        data class Field(
+            val ci: ClassInfo,
+            val fi: FieldInfo,
+            val ctorParamAnnotations: List<AnnotationInfo> = emptyList()
+        ) : TsFieldInspection
+
+        data class Getter(
+            val ci: ClassInfo,
+            val mi: MethodInfo,
+            val ctorParamAnnotations: List<AnnotationInfo> = emptyList()
+        ) : TsFieldInspection
+    }
+    data class ResolvedDiscriminatedSubTypes(
+        val discriminatorProperty: String,
+        val options: List<SubtypeOption>
+    )
+
+    data class SubtypeOption(
+        val shim: Class<*>,
+        val discriminatorValue: String
+    )
+
     // Resolve the serialized field name for a given inspection target.
     // Default behavior: return the backing name (field name or JavaBean-derived getter property name).
     fun resolveFieldName(parent: ClassInfo, inspection: TsFieldInspection): String {
@@ -48,7 +58,7 @@ interface JsonAdapter {
     // Return null if the adapter cannot determine polymorphic handling for the given base.
     fun resolveDiscriminatedSubTypes(
         scan: ScanResult,
-        shim: TypeShim,
+        clazz: Class<*>,
     ): ResolvedDiscriminatedSubTypes?
 
     fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? {
@@ -202,13 +212,5 @@ interface JsonAdapter {
 }
 
 
-data class ResolvedDiscriminatedSubTypes(
-    val discriminatorProperty: String,
-    val options: List<SubtypeOption>
-)
 
-data class SubtypeOption(
-    val shim: TypeShim,
-    val discriminatorValue: String
-)
 

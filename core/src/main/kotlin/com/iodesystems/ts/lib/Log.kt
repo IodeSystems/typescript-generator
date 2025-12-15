@@ -10,8 +10,4 @@ object Log {
             if (this::class.java.name.contains("Companion")) this::class.java.enclosingClass else this::class.java
         )
     }
-
-    fun Logger.debug(block: () -> String) {
-        if (isDebugEnabled) debug(block())
-    }
 }

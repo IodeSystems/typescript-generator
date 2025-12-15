@@ -9,6 +9,12 @@ data class ApiMethod(
     val queryParamsType: TsType? = null,
     val pathReplacements: List<PathParam> = emptyList(),
 ) {
+    fun types() = listOfNotNull(
+        requestBodyType,
+        responseBodyType,
+        queryParamsType
+    )
+
     data class PathParam(
         val name: String,
         val placeholder: String,

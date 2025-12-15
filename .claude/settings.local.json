@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew compileKotlin:*)",
+      "Bash(./gradlew compileTestKotlin:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew :core:test:*)",
+      "Bash(cat:*)",
+      "Bash(./gradlew :core:compileKotlin)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(gradle wrapper:*)",
+      "Bash(gradle :core:test:*)",
+      "Bash(./gradlew:*)"
+    ]
+  }
+}

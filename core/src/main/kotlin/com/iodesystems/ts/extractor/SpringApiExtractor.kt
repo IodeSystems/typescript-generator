@@ -10,7 +10,9 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
 import org.springframework.web.bind.annotation.*
 
-class SpringApiExtractor(val config: Config) : ApiExtractor {
+class SpringApiExtractor(
+    val config: Config
+) : ApiExtractor {
     private val log = logger()
 
     override fun extract(scan: ScanResult): ApiRegistry {

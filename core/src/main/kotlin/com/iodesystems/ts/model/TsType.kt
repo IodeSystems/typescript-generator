@@ -18,83 +18,84 @@ data class TsRef(
     }
 }
 
-
 sealed interface TsType {
-    val jvmQualifiedClassName: String
-    val tsName: String
-    val isOptional: Boolean
-    val isNullable: Boolean
-    val tsGenericParameters: Map<String, Inline>
+    val fqcn: String
+    val name: String
+    val optional: Boolean
+    val nullable: Boolean
+    val generics: Map<String, Inline>
 
     fun nonGlobalRelatedTypes(): List<TsType> {
-        return if (listOf("string", "void", "number", "boolean").contains(tsName)) emptyList()
-        else if (tsName.startsWith("Record<") || tsName.startsWith("Array<")) this.tsGenericParameters.values.flatMap { it.nonGlobalRelatedTypes() }
-        else listOf(this) + this.tsGenericParameters.values.flatMap { it.nonGlobalRelatedTypes() }
-    }
-
-    fun withGenerics(definedGenerics: Map<String, Inline> = emptyMap()): TsType {
-        val tsGenericParameters = tsGenericParameters.map { (name, existing) ->
-            name to (definedGenerics[name] ?: existing)
-        }.toMap()
-        return when (this) {
-            is Enum -> this
-            is Inline -> copy(tsGenericParameters = tsGenericParameters)
-            is Object -> copy(tsGenericParameters = tsGenericParameters)
-            is Union -> copy(tsGenericParameters = tsGenericParameters)
-        }
+        return if (listOf("string", "void", "number", "boolean").contains(name)) emptyList()
+        else if (name.startsWith("Record<") || name.startsWith("Array<")) this.generics.values.flatMap { it.nonGlobalRelatedTypes() }
+        else listOf(this) + this.generics.values.flatMap { it.nonGlobalRelatedTypes() }
     }
 
     fun inlineReference(
-        nullable: Boolean = isNullable,
-        optional: Boolean = isOptional,
+        nullable: Boolean = this@TsType.nullable,
+        optional: Boolean = this@TsType.optional,
     ): Inline {
         return Inline(
-            jvmQualifiedClassName = jvmQualifiedClassName,
-            tsName = tsName,
-            tsGenericParameters = tsGenericParameters,
-            isOptional = optional,
-            isNullable = nullable
+            fqcn = fqcn,
+            name = name,
+            generics = generics,
+            optional = optional,
+            nullable = nullable
         )
     }
 
     data class Inline(
-        override val jvmQualifiedClassName: String,
-        override val tsName: String,
-        override val isOptional: Boolean = false,
-        override val isNullable: Boolean = false,
-        override val tsGenericParameters: Map<String, Inline> = emptyMap(),
+        override val fqcn: String,
+        override val name: String,
+        override val optional: Boolean = false,
+        override val nullable: Boolean = false,
+        override val generics: Map<String, Inline> = emptyMap(),
     ) : TsType
 
     data class Object(
-        override val jvmQualifiedClassName: String,
-        override val tsName: String,
-        override val isOptional: Boolean = false,
-        override val isNullable: Boolean = false,
+        override val fqcn: String,
+        override val name: String,
+        override val optional: Boolean = false,
+        override val nullable: Boolean = false,
         val fields: Map<String, TsField> = emptyMap(),
         val discriminator: Pair<String, String>? = null,
-        val supertypes: List<TsType> = emptyList(),
-        override val tsGenericParameters: Map<String, Inline> = emptyMap(),
+        val intersections: List<TsType> = emptyList(),
+        override val generics: Map<String, Inline> = emptyMap(),
     ) : TsType
 
     data class Union(
-        override val jvmQualifiedClassName: String,
-        override val tsName: String,
-        override val isOptional: Boolean = false,
-        override val isNullable: Boolean = false,
+        override val fqcn: String,
+        override val name: String,
+        override val optional: Boolean = false,
+        override val nullable: Boolean = false,
         val discriminatorField: String,
         val children: List<TsType> = emptyList(),
         val supertypes: List<TsType> = emptyList(),
-        override val tsGenericParameters: Map<String, Inline> = emptyMap()
+        override val generics: Map<String, Inline> = emptyMap()
     ) : TsType
 
     data class Enum(
-        override val jvmQualifiedClassName: String,
-        override val tsName: String,
-        override val isOptional: Boolean = false,
-        override val isNullable: Boolean = false,
+        override val fqcn: String,
+        override val name: String,
+        override val optional: Boolean = false,
+        override val nullable: Boolean = false,
         val unionLiteral: String,
     ) : TsType {
-        override val tsGenericParameters: Map<String, Inline> = emptyMap()
+        override val generics: Map<String, Inline> = emptyMap()
+    }
+
+    /**
+     * Represents a type alias that maps a JVM type to a TypeScript type.
+     * Used for user-configured mapped types like `ByteString -> string`.
+     */
+    data class Alias(
+        override val fqcn: String,
+        override val name: String,
+        override val optional: Boolean = false,
+        override val nullable: Boolean = false,
+        val aliasTo: String,
+    ) : TsType {
+        override val generics: Map<String, Inline> = emptyMap()
     }
 
 }

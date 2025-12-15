@@ -1,8 +1,9 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
+import org.junit.Ignore
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping

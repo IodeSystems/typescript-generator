@@ -1,8 +1,8 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -50,8 +50,8 @@ class MixedConstructorAndGetterRequestTest {
             export type MixedApiRequest = {
               param: string
               wrap: MixedWrapper
-              getter: number
               field: boolean
+              getter: number
             }
         """.trimIndent(),
             why = "Generated types should include ctor values, getters, and fields!"

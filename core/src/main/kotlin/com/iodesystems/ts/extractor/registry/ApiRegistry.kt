@@ -47,7 +47,6 @@ class ApiMethodDescriptor(
     val name: String,
     val http: TsHttpMethod,
     val path: String,
-    val bodyIndex: Int?,
     val params: List<ParamDescriptor>
 ) {
     class Builder(private val name: String) {
@@ -76,7 +75,7 @@ class ApiMethodDescriptor(
             params += ParamDescriptor(index, name, optional, ParamKind.PATH, placeholder)
         }
 
-        fun build() = ApiMethodDescriptor(name, http, path, bodyIndex, params)
+        fun build() = ApiMethodDescriptor(name, http, path, params)
     }
 }
 

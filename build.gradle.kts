@@ -35,6 +35,9 @@ subprojects {
     apply(plugin = "maven-publish")
     apply(plugin = "signing")
 
+    repositories {
+        mavenCentral()
+    }
 
     group = rootProject.group.toString()
     version = rootProject.version.toString()

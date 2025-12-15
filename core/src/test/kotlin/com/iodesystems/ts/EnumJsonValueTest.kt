@@ -1,9 +1,10 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonValue
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
+import org.junit.Ignore
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController

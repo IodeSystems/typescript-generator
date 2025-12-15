@@ -2,46 +2,14 @@ package com.iodesystems.ts.emitter
 
 import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.Config
-import com.iodesystems.ts.Emitter
-import com.iodesystems.ts.Scanner
-import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
+import org.junit.Ignore
 import org.springframework.web.bind.annotation.*
-import kotlin.reflect.KClass
 import kotlin.test.Test
 
 class EmitterTest {
-
-    companion object {
-        fun emitter(
-            vararg classes: KClass<*>,
-            fn: (Config.Builder.() -> Config.Builder) = { this }
-        ): Emitter {
-            val config = Config.Builder(Config()).fn().run { includeApi(classes = classes) }.config
-            val scan = Scanner(config).scan()
-            val apiRegistry = config.apiExtractor().extract(scan)
-            val extraction = JvmExtractor(config).buildFromRegistry(scan, apiRegistry)
-            return Emitter(config, extraction)
-        }
-
-        fun Emitter.Output.content(
-            includeLib: Boolean = false
-        ): String {
-            val sb = StringBuilder()
-            files.forEach { file ->
-                sb.append("//<${file.file.name}>\n")
-                sb.append(file.content.lines().joinToString("\n") { line ->
-                    if (line.startsWith("import")) "//$line" else line
-                })
-                sb.append("\n//</${file.file.name}>\n")
-            }
-            return sb.toString().let { s ->
-                if (includeLib) s
-                else s.replace(Emitter.lib(), "")
-            }
-        }
-    }
 
     @Test
     fun headersAreEmitted() {
@@ -222,7 +190,7 @@ class EmitterTest {
     }
 
     @RestController
-    @RequestMapping
+    @RequestMapping("herp/derp")
     class KitchenSink {
 
         @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
@@ -315,7 +283,7 @@ class EmitterTest {
             "should generate named query type and return array of numbers"
         )
         result.assertContains(
-            "return fetchInternal(this.opts, flattenQueryParams(\"/search\", query, null), {",
+            "return fetchInternal(this.opts, flattenQueryParams(\"herp/derp/search\", query, null), {",
             "should call flattenQueryParams when query params exist"
         )
 

@@ -1,8 +1,8 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.emitter
 import org.springframework.web.bind.annotation.*
 import java.io.File
 import java.time.LocalDate
@@ -61,7 +61,7 @@ class OutputTest {
     fun unifiedOutputTest() {
         TypeScriptGenerator.build {
             cleanOutputDir()
-            includeApis(".*OutputApi.*")
+            packageAccept(".*OutputApi.*")
             outputDirectory("./build/test/output-test/test-unified")
             mappedType(OffsetDateTime::class, "Dayjs | string")
             mappedType(LocalDate::class, "string")
@@ -119,7 +119,7 @@ class OutputTest {
         // Generate with separate lib file
         TypeScriptGenerator.build {
             cleanOutputDir()
-            includeApis(".*OutputApi.*")
+            packageAccept(".*OutputApi.*")
             emitLibAsSeparateFile()
             outputDirectory("./build/test/output-test/separate-lib")
             mappedType(OffsetDateTime::class, "Dayjs | string")
@@ -159,7 +159,7 @@ class OutputTest {
         // Generate grouped APIs
         TypeScriptGenerator.build {
             cleanOutputDir()
-            includeApis(".*OutputApi.*")
+            packageAccept(".*OutputApi.*")
             emitLibAsSeparateFile()
             groupApis(
                 mapOf(
@@ -228,7 +228,7 @@ class OutputTest {
         // Generate grouped APIs
         TypeScriptGenerator.build {
             cleanOutputDir()
-            includeApis(".*OutputApi.*")
+            packageAccept(".*OutputApi.*")
             typesFileName("api-types.ts")
             emitLibAsSeparateFile()
             groupApis(

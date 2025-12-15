@@ -1,9 +1,9 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -14,7 +14,7 @@ class UnionTest {
 
     @RestController
     @RequestMapping
-    class Inheritence {
+    class Inheritance {
         interface IModel {
             val name: String
 
@@ -41,12 +41,12 @@ class UnionTest {
 
     @Test
     fun union_inheritance() {
-        val emitter = emitter(Inheritence::class)
+        val emitter = emitter(Inheritance::class)
         val result = emitter.ts().content()
 
         result.assertContains(
             fragment = """
-            export type UnionTestInheritenceIModel = {
+            export type UnionTestInheritanceIModel = {
               name: string
             }
             """.trimIndent(),
@@ -54,7 +54,7 @@ class UnionTest {
         )
         result.assertContains(
             fragment = """
-            export type UnionTestInheritenceModel = UnionTestInheritenceIModel & {
+            export type UnionTestInheritanceModel = UnionTestInheritanceIModel & {
               b: string
             }
             """.trimIndent(),
@@ -63,7 +63,7 @@ class UnionTest {
 
         result.assertContains(
             """
-            export type UnionTestInheritenceModelA = UnionTestInheritenceModel & {
+            export type UnionTestInheritanceModelA = UnionTestInheritanceModel & {
               "@type": "A"
             }
         """.trimIndent(),
@@ -71,17 +71,15 @@ class UnionTest {
         )
         result.assertContains(
             """
-            export type UnionTestInheritenceModelUnion = UnionTestInheritenceModel & (UnionTestInheritenceModelA | UnionTestInheritenceModelB)
+            export type UnionTestInheritanceModelUnion = UnionTestInheritanceModel & (UnionTestInheritanceModelA | UnionTestInheritanceModelB)
         """.trimIndent(),
             "Union should contain A | B"
         )
         result.assertContains(
             """
-              post(req: UnionTestInheritenceModelUnion): Promise<void> {
+              post(req: UnionTestInheritanceModelUnion): Promise<void> {
         """.trimIndent(),
-            "POST method should accept UnionTestInheritenceModelUnion"
+            "POST method should accept UnionTestInheritanceModelUnion"
         )
-
-
     }
 }

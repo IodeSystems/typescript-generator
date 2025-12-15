@@ -1,12 +1,13 @@
 package com.iodesystems.ts
 
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertContains
 import com.iodesystems.ts.lib.Asserts.assertEq
 import com.iodesystems.ts.lib.Asserts.assertNonNull
 import com.iodesystems.ts.lib.Asserts.assertType
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
 import com.iodesystems.ts.model.TsType
+import org.junit.Ignore
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -42,7 +43,7 @@ class OptionalFieldsTest {
         em.extraction.types.let { types ->
 
             types.firstOrNull { t ->
-                t.tsName == "OptionalFieldsPing"
+                t.name == "OptionalFieldsPing"
             }
                 .assertNonNull("OptionalFieldsPing should be present in types")
                 .assertType<TsType.Object>("OptionalFieldsPing should be an object")

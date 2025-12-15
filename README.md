@@ -40,8 +40,16 @@ generateTypescript {
         // Where files are written (default: "./")
         outputDirectory("src/main/ui/generated")
 
-        // Packages to scan for API/controllers and models
-        apiBasePackages("com.example.api")
+        // Package patterns to accept for scanning (package prefixes or regex)
+        // This controls both ClassGraph scanning scope and API filtering
+        packageAccept("com.example.api")
+
+        // Package patterns to reject (package prefixes or regex)
+        packageReject("com.example.internal")
+
+        // Or include specific API controllers by class
+        includeApi<UserController>()
+        includeApi(OrderController::class, ProductController::class)
 
         // Clean the output directory before writing
         cleanOutputDir()
@@ -58,10 +66,6 @@ generateTypescript {
         // Treat fields/params with these annotations as optional and/or nullable
         optionalAnnotations("org.jetbrains.annotations.Nullable")
         nullableAnnotations("org.jetbrains.annotations.Nullable")
-
-        // Include/exclude APIs (by FQN or regex)
-        includeApis("com.example.api..*")
-        excludeApis("com.example.internal..*")
 
         // Replace type simple names via regex → replacement
         typeNameReplacements(mapOf("[.$]" to ""))
@@ -106,11 +110,10 @@ Build integration:
 ### Programmatic Usage
 
 ```kotlin
-val generator = com.iodesystems.ts.TypeScriptGenerator.build { b ->
-    b
-        .outputDirectory("./generated")
-        .apiBasePackages("com.example.api")
-        .includeApis("com.example.api..*")
+val generator = com.iodesystems.ts.TypeScriptGenerator.build {
+    outputDirectory("./generated")
+        .packageAccept("com.example.api")
+        .packageReject("com.example.internal")
         .emitLibAsSeparateFile() // "api-lib.ts"
         .emitTypesAsSeparateFile() // "api-types.ts"
 }
@@ -124,11 +127,11 @@ output.write()
 
 - `outputDirectory` (String) — builder: `outputDirectory(dir)`. Directory where generated files are written. Default: `./`
 - `cleanOutputDir` (Boolean) — builder: `cleanOutputDir()`. Delete output files before writing. Default: `false`
-- `apiBasePackages` (List<String>) — builder: `apiBasePackages(vararg)`. Packages to scan for controllers/models. Default: empty (scan everything on classpath)
+- `packageAccept` (List<String>) — builder: `packageAccept(vararg)` / `addPackageAccept(vararg)` / `includeApi<T>()` / `includeApi(vararg KClass)`. Package prefixes or regex patterns to accept for ClassGraph scanning and API filtering. When using `includeApi`, the class names are added here and the package is extracted for scanning.
+- `packageReject` (List<String>) — builder: `packageReject(vararg)` / `addPackageReject(vararg)`. Package prefixes or regex patterns to reject from scanning and API filtering.
 - `mappedTypes` (Map<String,String>) — builder: `mappedTypes(map)` / `mappedType(KClass, String)`. Map JVM FQCN to TypeScript identifier.
 - `optionalAnnotations` (Set<String>) — builder: `optionalAnnotations(vararg)` / `addOptionalAnnotations(vararg)`. FQCNs that mark a field/param/getter as optional.
 - `nullableAnnotations` (Set<String>) — builder: `nullableAnnotations(vararg)` / `addNullableAnnotations(vararg)`. FQCNs that mark a field/param/getter as nullable.
-- `includeApiIncludes` / `includeApiExcludes` (List<String>) — builder: `includeApis(vararg)` / `excludeApis(vararg)`. FQCN or regex patterns to include/exclude APIs.
 - `typeNameReplacements` (Map<Regex,String>) — builder: `typeNameReplacements(map)` / `addTypeNameReplacement(pattern, replacement)`. Regex replacement rules for simple type names.
 - `emitLibFileName` (String?) — builder: `emitLibAsSeparateFile(name)`. If set, emit API helpers to this file (commonly `api-lib.ts`).
 - `groupApiFile` (Map<String, List<String>>?) — builder: `groupApis(map)`. Group controllers (by FQCN) into specific output files.
@@ -137,7 +140,7 @@ output.write()
 
 ## Spring Boot Support
 
-Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `basePackages`, `includeApiIncludes`, and `includeApiExcludes` to control the scope.
+Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `packageAccept` and `packageReject` to control the scope, or `includeApi` to target specific controller classes.
 
 ## Samples
 

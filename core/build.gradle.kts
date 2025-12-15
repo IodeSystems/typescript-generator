@@ -19,4 +19,9 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+// Ensure test-project classpath is available before core tests run (for ExternalClassPathTest)
+tasks.named("compileTestKotlin") {
+    dependsOn(":test-project:test-core:writeClasspath")
+}
+
 

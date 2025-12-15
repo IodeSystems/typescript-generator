@@ -17,7 +17,7 @@ class TypeScriptGenerator(
         val scanner = Scanner(config)
         val scanResult = scanner.scan()
         val apiRegistry = config.apiExtractor().extract(scanResult)
-        val extraction = config.jvmExtractor().buildFromRegistry(scanResult, apiRegistry)
+        val extraction = config.jvmExtractor(scanResult).buildFromRegistry(apiRegistry)
         return Emitter(config, extraction)
     }
 

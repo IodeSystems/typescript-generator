@@ -87,8 +87,8 @@ class Emitter(
         }
 
         fun tsNameWithGenericsResolved(type: TsType): String {
-            val name = type.tsName
-            val generics = type.tsGenericParameters
+            val name = type.name
+            val generics = type.generics
             if (generics.isEmpty()) return name
 
             val lt = name.indexOf('<')
@@ -133,7 +133,7 @@ class Emitter(
                 val mapped = generics[arg]
                 if (mapped != null) {
                     val resolved = tsNameWithGenericsResolved(mapped)
-                    if (mapped.isNullable) "$resolved | null" else resolved
+                    if (mapped.nullable) "$resolved | null" else resolved
                 } else arg
             }
 
@@ -222,13 +222,13 @@ class Emitter(
 
         extraction.types.forEach { type ->
             val o = writeContextForType()
-            o.ownedTypes.add(type.tsName)
-            typeLocations[type.tsName] = o
+            o.ownedTypes.add(type.name)
+            typeLocations[type.name] = o
 
             o.write("/**\n")
-            o.write(" * Jvm {@link ${type.jvmQualifiedClassName}}\n")
+            o.write(" * Jvm {@link ${type.fqcn}}\n")
             if (config.includeRefComments) {
-                extraction.typeReferences.filter { it.toTsBaseName == type.tsName }
+                extraction.typeReferences.filter { it.toTsBaseName == type.name }
                     .groupBy { it.refType }
                     .forEach { (type, refs) ->
                         o.write(" * $type ref:\n")
@@ -239,12 +239,12 @@ class Emitter(
             }
             o.write(" */\n")
 
-            o.write("export type ${type.tsName} = ")
+            o.write("export type ${type.name} = ")
             when (type) {
                 is TsType.Inline -> error("Inline types are NOT exported. This is an error here")
                 is TsType.Object -> {
 
-                    val supers = type.supertypes
+                    val supers = type.intersections
                     // Alias-like object: no fields, exactly one supertype, no discriminator
                     if (type.fields.isEmpty() && supers.size == 1 && type.discriminator == null) {
                         o.write(tsNameWithGenericsResolved(supers.first()))
@@ -296,11 +296,16 @@ class Emitter(
                     o.write(type.unionLiteral)
                     o.write("\n")
                 }
+
+                is TsType.Alias -> {
+                    o.write(type.aliasTo)
+                    o.write("\n")
+                }
             }
         }
 
         val didImportTypes = mutableSetOf<WriteContext>()
-        extraction.apis.map { api ->
+        extraction.apis.forEach { api ->
             val o = api.writeContext()
 
             if (o != lib) {
@@ -342,8 +347,8 @@ class Emitter(
 
                 fun withNullability(name: String, t: TsType?): String {
                     if (t == null) return name
-                    val nullable = if (t.isNullable) " | null" else ""
-                    val optional = if (t.isOptional) " | undefined" else ""
+                    val nullable = if (t.nullable) " | null" else ""
+                    val optional = if (t.optional) " | undefined" else ""
                     return name + nullable + optional
                 }
 
@@ -355,17 +360,17 @@ class Emitter(
                             ApiMethod.PathParam.Type.STRING -> "string"
                             ApiMethod.PathParam.Type.NUMBER -> "string | number"
                         }
-                        "${p.name}: ${tsType}"
+                        "${p.name}: $tsType"
                     }
-                    sigParts += "path: { ${fields} }"
+                    sigParts += "path: { $fields }"
                 }
                 if (method.queryParamsType != null) {
                     val qn = tsNameWithGenericsResolved(method.queryParamsType)
-                    sigParts += "query: ${qn}"
+                    sigParts += "query: $qn"
                 }
                 if (req != null) {
                     val bodyName = tsNameWithGenericsResolved(req)
-                    sigParts += (if (req.isOptional) "req?: " else "req: ") + withNullability(bodyName, req)
+                    sigParts += (if (req.optional) "req?: " else "req: ") + withNullability(bodyName, req)
                 }
 
                 val sig = sigParts.joinToString(", ")
@@ -392,7 +397,7 @@ class Emitter(
                     o.write("\n")
                 }
                 o.write("    })")
-                if (res.tsName == "void") {
+                if (res.name == "void") {
                     o.write(".then(r=>{})\n")
                 } else {
                     o.write(".then(r=>r.json())\n")

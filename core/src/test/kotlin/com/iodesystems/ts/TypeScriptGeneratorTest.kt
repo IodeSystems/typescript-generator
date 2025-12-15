@@ -1,9 +1,9 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.emitter.EmitterTest.Companion.content
-import com.iodesystems.ts.emitter.EmitterTest.Companion.emitter
 import com.iodesystems.ts.lib.Asserts.assertEq
+import com.iodesystems.ts.lib.TestUtils.content
+import com.iodesystems.ts.lib.TestUtils.emitter
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -149,28 +149,6 @@ class TypeScriptGeneratorTest {
         //<api.ts>
         //import type {Dayjs} from 'dayjs'
         /**
-         * Jvm {@link java.time.LocalDate}
-         * TYPE ref:
-         * - {@link TestApiSimple}
-         * - {@link TestApiGetResult}
-         */
-        export type LocalDate = string
-        /**
-         * Jvm {@link java.time.LocalTime}
-         * TYPE ref:
-         * - {@link TestApiSimple}
-         * - {@link TestApiGetResult}
-         */
-        export type LocalTime = string
-        /**
-         * Jvm {@link java.time.OffsetDateTime}
-         * TYPE ref:
-         * - {@link TestApiSimple}
-         * - {@link TestApiSimpleResponseOk}
-         * - {@link TestApiGetResult}
-         */
-        export type OffsetDateTime = Dayjs | string
-        /**
          * Jvm {@link com.iodesystems.ts.TestApi$Simple}
          * METHOD ref:
          * - {@link TestApi#post}
@@ -188,9 +166,37 @@ class TypeScriptGeneratorTest {
           date: LocalDate
           time: LocalTime
           at: OffsetDateTime
-          price: number
-          huge: string
+          price: BigDecimal
+          huge: BigInteger
         }
+        /**
+         * Jvm {@link java.time.LocalDate}
+         */
+        export type LocalDate = string
+        /**
+         * Jvm {@link java.time.LocalTime}
+         */
+        export type LocalTime = string
+        /**
+         * Jvm {@link java.time.OffsetDateTime}
+         */
+        export type OffsetDateTime = Dayjs | string
+        /**
+         * Jvm {@link java.math.BigDecimal}
+         */
+        export type BigDecimal = number
+        /**
+         * Jvm {@link java.math.BigInteger}
+         */
+        export type BigInteger = number & {
+          lowestSetBit: number
+        }
+        /**
+         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response}
+         * METHOD ref:
+         * - {@link TestApi#post}
+         */
+        export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
         /**
          * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response}
          * TYPE ref:
@@ -200,9 +206,14 @@ class TypeScriptGeneratorTest {
         export type TestApiSimpleResponse = {
         }
         /**
+         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response$Failure}
+         */
+        export type TestApiSimpleResponseFailure = TestApiSimpleResponse & {
+          "_type": "Failure"
+          t: ReferencedType
+        }
+        /**
          * Jvm {@link com.iodesystems.ts.ReferencedType}
-         * TYPE ref:
-         * - {@link TestApiSimpleResponseFailure}
          */
         export type ReferencedType = NestedSomeInterface & {
           circularTypeReference: ReferencedType | null
@@ -216,29 +227,13 @@ class TypeScriptGeneratorTest {
           interfaceValue: string
         }
         /**
-         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response$Failure}
-         * TYPE ref:
-         * - {@link TestApiSimpleResponseUnion}
-         */
-        export type TestApiSimpleResponseFailure = TestApiSimpleResponse & {
-          "_type": "Failure"
-          t: ReferencedType
-        }
-        /**
          * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response$Ok}
-         * TYPE ref:
-         * - {@link TestApiSimpleResponseUnion}
          */
-        export type TestApiSimpleResponseOk = TestApiSimpleResponse & NestedSomeInterface & {
+        export type TestApiSimpleResponseOk = TestApiSimpleResponse & {
           "_type": "Ok"
           at: OffsetDateTime
+          interfaceValue: string
         }
-        /**
-         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response#Union}
-         * METHOD ref:
-         * - {@link TestApi#post}
-         */
-        export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
         /**
          * Jvm {@link com.iodesystems.ts.TestApi$GetResult}
          * METHOD ref:
@@ -253,8 +248,8 @@ class TypeScriptGeneratorTest {
           d: LocalDate
           t: LocalTime
           odt: OffsetDateTime
-          bd: number
-          bi: string
+          bd: BigDecimal
+          bi: BigInteger
         }
         //import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
         export class TestApi {
