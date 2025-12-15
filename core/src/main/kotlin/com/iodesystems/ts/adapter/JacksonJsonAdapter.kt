@@ -3,6 +3,7 @@ package com.iodesystems.ts.adapter
 import com.fasterxml.jackson.annotation.*
 import com.iodesystems.ts.adapter.JsonAdapter.ResolvedDiscriminatedSubTypes
 import com.iodesystems.ts.adapter.JsonAdapter.TsFieldInspection
+import com.iodesystems.ts.lib.AnnotationUtils
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
@@ -23,13 +24,13 @@ class JacksonJsonAdapter : JsonAdapter {
         }
         if (!clazz.isEnum) return super.enumSerializedTypeOrNull(scan, enumFqdn, enumNames)
 
-        // Find a zero-arg method annotated with @JsonValue
+        // Find a zero-arg method annotated with @JsonValue (using name-based lookup for classloader isolation)
         val jsonValueMethod = clazz.methods.firstOrNull { m ->
-            m.getAnnotation(JsonValue::class.java) != null && m.parameterCount == 0
+            AnnotationUtils.hasAnnotation(m, JsonValue::class) && m.parameterCount == 0
         }
         // Or a field annotated with @JsonValue
         val jsonValueField = if (jsonValueMethod != null) null else clazz.fields.firstOrNull { f ->
-            f.getAnnotation(JsonValue::class.java) != null
+            AnnotationUtils.hasAnnotation(f, JsonValue::class)
         }
 
         if (jsonValueMethod == null && jsonValueField == null) {
@@ -65,48 +66,40 @@ class JacksonJsonAdapter : JsonAdapter {
     }
 
     override fun isOptional(an: List<io.github.classgraph.AnnotationInfo>): Boolean? {
-        val jp = an.firstOrNull { it.classInfo.name == JsonProperty::class.java.name } ?: return super.isOptional(an)
-        val required = jp.parameterValues.firstOrNull { it.name == "required" }?.value as? Boolean
-        val defaultValue = jp.parameterValues.firstOrNull { it.name == "defaultValue" }?.value as? String
+        val jp = AnnotationUtils.getAnnotation(an, JsonProperty::class) ?: return super.isOptional(an)
+        val required = jp.getBoolean("required")
+        val defaultValue = jp.getString("defaultValue")
         if (required == false) return true
         if (!defaultValue.isNullOrBlank()) return true
         return super.isOptional(an)
     }
 
     override fun resolveRenameFromAnnotations(annotations: List<io.github.classgraph.AnnotationInfo>): String? {
-        fun resolveFromAnnotations(anns: List<io.github.classgraph.AnnotationInfo>): String? {
-            val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
-            val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
-            if (!explicit.isNullOrBlank()) return explicit
+        return resolveNameFromAnnotations(annotations)
+    }
 
-            val ja = anns.firstOrNull { it.classInfo.name == JsonAlias::class.java.name }
-            val aliases = ja?.parameterValues?.firstOrNull { it.name == "value" }?.value as? Array<*>
-            val firstAlias = aliases?.firstOrNull() as? String
-            if (!firstAlias.isNullOrBlank()) return firstAlias
-            return null
-        }
-        return resolveFromAnnotations(annotations)
+    /**
+     * Extract field name from @JsonProperty or @JsonAlias annotations.
+     */
+    private fun resolveNameFromAnnotations(anns: List<io.github.classgraph.AnnotationInfo>): String? {
+        val jp = AnnotationUtils.getAnnotation(anns, JsonProperty::class)
+        val explicit = jp?.getString("value")
+        if (!explicit.isNullOrBlank()) return explicit
+
+        val ja = AnnotationUtils.getAnnotation(anns, JsonAlias::class)
+        val firstAlias = ja?.getStringList("value")?.firstOrNull()
+        if (!firstAlias.isNullOrBlank()) return firstAlias
+        return null
     }
 
     override fun resolveFieldName(parent: ClassInfo, inspection: TsFieldInspection): String {
-        fun resolveFromAnnotations(anns: List<io.github.classgraph.AnnotationInfo>): String? {
-            val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
-            val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
-            if (!explicit.isNullOrBlank()) return explicit
-
-            val ja = anns.firstOrNull { it.classInfo.name == JsonAlias::class.java.name }
-            val aliases = ja?.parameterValues?.firstOrNull { it.name == "value" }?.value as? Array<*>
-            val firstAlias = aliases?.firstOrNull() as? String
-            if (!firstAlias.isNullOrBlank()) return firstAlias
-            return null
-        }
         return when (inspection) {
             is TsFieldInspection.Field -> {
                 val fieldAnns = inspection.fi.annotationInfo?.toList() ?: emptyList()
                 // Try field annotations first
-                resolveFromAnnotations(fieldAnns)
+                resolveNameFromAnnotations(fieldAnns)
                 // Then consider matching constructor parameter annotations (when available)
-                    ?: resolveFromAnnotations(inspection.ctorParamAnnotations)
+                    ?: resolveNameFromAnnotations(inspection.ctorParamAnnotations)
                     // Then consider getter annotations for the same property
                     ?: run {
                         val prop = inspection.fi.name
@@ -115,15 +108,15 @@ class JacksonJsonAdapter : JsonAdapter {
                             parent.methodInfo.firstOrNull { it.name == "get$cap" && it.parameterInfo.isEmpty() }
                                 ?: parent.methodInfo.firstOrNull { it.name == "is$cap" && it.parameterInfo.isEmpty() }
                         val gAnns = getter?.annotationInfo?.toList() ?: emptyList()
-                        resolveFromAnnotations(gAnns)
+                        resolveNameFromAnnotations(gAnns)
                     }
                     ?: super.resolveFieldName(parent, inspection)
             }
 
             is TsFieldInspection.Getter -> {
                 val getterAnns = inspection.mi.annotationInfo?.toList() ?: emptyList()
-                resolveFromAnnotations(getterAnns)
-                    ?: resolveFromAnnotations(inspection.ctorParamAnnotations)
+                resolveNameFromAnnotations(getterAnns)
+                    ?: resolveNameFromAnnotations(inspection.ctorParamAnnotations)
                     ?: super.resolveFieldName(parent, inspection)
             }
         }
@@ -133,9 +126,21 @@ class JacksonJsonAdapter : JsonAdapter {
         scan: ScanResult,
         clazz: Class<*>,
     ): ResolvedDiscriminatedSubTypes? {
-        val jsonTypeInfo = clazz.getAnnotation(JsonTypeInfo::class.java) ?: return null
-        val id = jsonTypeInfo.use
-        val discriminatorProperty = jsonTypeInfo.property.ifBlank { id.defaultPropertyName }
+        // Use AnnotationUtils for classloader-safe annotation lookup
+        val classInfo = scan.getClassInfo(clazz.name)
+        val jsonTypeInfoAnn = AnnotationUtils.getAnnotation(classInfo, clazz, JsonTypeInfo::class)
+            ?: return null
+
+        val id = jsonTypeInfoAnn.getString("use") ?: "CLASS"
+        val discriminatorProperty = (jsonTypeInfoAnn.getString("property") ?: "").ifBlank {
+            when (id) {
+                "CLASS" -> "@class"
+                "SIMPLE_NAME" -> "@type"
+                "NAME" -> "@type"
+                "MINIMAL_CLASS" -> "@c"
+                else -> "@type"
+            }
+        }
 
         // First try ClassGraph scan for implementations (works for classes within scanned packages)
         var implClasses = scan.getClassesImplementing(clazz.name)
@@ -153,15 +158,17 @@ class JacksonJsonAdapter : JsonAdapter {
         }
 
         val options = implClasses.map { implClass ->
+            val implClassInfo = scan.getClassInfo(implClass.name)
             val discValue = when (id) {
-                JsonTypeInfo.Id.CLASS -> implClass.name
-                JsonTypeInfo.Id.SIMPLE_NAME -> implClass.simpleName
-                JsonTypeInfo.Id.NAME -> {
-                    val jtn = implClass.getAnnotation(JsonTypeName::class.java)
-                    jtn?.value?.takeIf { it.isNotBlank() } ?: implClass.simpleName
+                "CLASS" -> implClass.name
+                "SIMPLE_NAME" -> implClass.simpleName
+                "NAME" -> {
+                    // Use AnnotationUtils for classloader-safe @JsonTypeName lookup
+                    val jtnAnn = AnnotationUtils.getAnnotation(implClassInfo, implClass, JsonTypeName::class)
+                    jtnAnn?.getString("value")?.takeIf { it.isNotBlank() } ?: implClass.simpleName
                 }
 
-                else -> error("Unsupported type $id")
+                else -> error("Unsupported JsonTypeInfo.Id type: $id")
             }
             JsonAdapter.SubtypeOption(implClass, discValue)
         }
@@ -173,14 +180,13 @@ class JacksonJsonAdapter : JsonAdapter {
             .filter { it.isPublic && !it.isSynthetic }
         // Prefer a constructor annotated with @JsonCreator
         ctors.firstOrNull { ctor ->
-            ctor.annotationInfo.get(JsonCreator::class.java.name) != null
+            AnnotationUtils.hasAnnotation(ctor, JsonCreator::class)
         }?.let { return it }
 
         // Prefer static method annotated with @JsonCreator
         ci.methodInfo.firstOrNull {
-            it.isStatic && it.isPublic && !it.isSynthetic && !it.parameterInfo.isEmpty() && it.annotationInfo.get(
-                JsonCreator::class.java.name
-            ) != null
+            it.isStatic && it.isPublic && !it.isSynthetic && !it.parameterInfo.isEmpty() &&
+                AnnotationUtils.hasAnnotation(it, JsonCreator::class)
         }?.let { return it }
 
         return super.chooseJsonConstructor(ci, scan)
@@ -192,8 +198,8 @@ class JacksonJsonAdapter : JsonAdapter {
         param: io.github.classgraph.MethodParameterInfo
     ): String? {
         val anns = param.annotationInfo?.toList() ?: emptyList()
-        val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
-        val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
+        val jp = AnnotationUtils.getAnnotation(anns, JsonProperty::class)
+        val explicit = jp?.getString("value")
         return when {
             !explicit.isNullOrBlank() -> explicit
             !param.name.isNullOrBlank() -> param.name
@@ -211,8 +217,8 @@ class JacksonJsonAdapter : JsonAdapter {
             // for Kotlin constructor parameters into resolveFieldName(). Keep fallback only for Java.
             val chosen = chooseJsonConstructor(ci, scan) ?: return null
             val paramIndex = chosen.parameterInfo.indexOfFirst { pi ->
-                val jp = pi.annotationInfo.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
-                val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
+                val jp = AnnotationUtils.getAnnotation(pi, JsonProperty::class)
+                val explicit = jp?.getString("value")
                 when {
                     !explicit.isNullOrBlank() -> explicit == propName
                     !pi.name.isNullOrBlank() -> pi.name == propName
@@ -221,8 +227,8 @@ class JacksonJsonAdapter : JsonAdapter {
             }
             if (paramIndex < 0) return null
             val anns = chosen.parameterInfo[paramIndex].annotationInfo?.toList() ?: emptyList()
-            val jp = anns.firstOrNull { it.classInfo.name == JsonProperty::class.java.name }
-            val explicit = jp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
+            val jp = AnnotationUtils.getAnnotation(anns, JsonProperty::class)
+            val explicit = jp?.getString("value")
             if (!explicit.isNullOrBlank()) explicit else null
         } catch (_: Throwable) {
             null

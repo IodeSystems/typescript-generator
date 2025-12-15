@@ -1,6 +1,7 @@
 package com.iodesystems.ts.adapter
 
 import com.iodesystems.ts.Config
+import com.iodesystems.ts.lib.AnnotationUtils
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import org.springframework.web.bind.annotation.PathVariable
@@ -10,14 +11,17 @@ class SpringApiAdapter(private val config: Config) : ApiAdapter {
     override fun resolvePathParams(method: MethodInfo): List<ApiAdapter.PathParam> {
         val out = mutableListOf<ApiAdapter.PathParam>()
         method.parameterInfo.forEachIndexed { idx, pi ->
-            val ann = pi.getAnnotationInfo(PathVariable::class.java)
-                ?: pi.annotationInfo.firstOrNull { it.classInfo.name.endsWith("PathVariable") }
+            val ann = AnnotationUtils.getAnnotation(pi, PathVariable::class)
+                ?: AnnotationUtils.getAnnotation(
+                    pi.annotationInfo?.firstOrNull { it.name.endsWith("PathVariable") }?.let { listOf(it) },
+                    pi.annotationInfo?.firstOrNull { it.name.endsWith("PathVariable") }?.name ?: ""
+                )
             if (ann != null) {
-                val annName =
-                    ann.parameterValues.firstOrNull { it.name == "name" || it.name == "value" }?.value as? String
+                val annName = ann.getString("name")?.takeIf { it.isNotBlank() }
+                    ?: ann.getString("value")?.takeIf { it.isNotBlank() }
                 val paramName = pi.name ?: "p$idx"
-                val placeholder = if (!annName.isNullOrBlank()) annName else paramName
-                val anns = pi.annotationInfo.map { it.classInfo.name }
+                val placeholder = annName ?: paramName
+                val anns = pi.annotationInfo.map { it.name }
                 val isOptionalByAnn = anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                 out += ApiAdapter.PathParam(
                     index = idx,
@@ -33,19 +37,22 @@ class SpringApiAdapter(private val config: Config) : ApiAdapter {
     override fun resolveQueryParams(method: MethodInfo): List<ApiAdapter.QueryParam> {
         val out = mutableListOf<ApiAdapter.QueryParam>()
         method.parameterInfo.forEachIndexed { idx, pi: MethodParameterInfo ->
-            val rp = pi.getAnnotationInfo(RequestParam::class.java)
-                ?: pi.annotationInfo.firstOrNull { it.classInfo.name.endsWith("RequestParam") }
+            val rp = AnnotationUtils.getAnnotation(pi, RequestParam::class)
+                ?: AnnotationUtils.getAnnotation(
+                    pi.annotationInfo?.firstOrNull { it.name.endsWith("RequestParam") }?.let { listOf(it) },
+                    pi.annotationInfo?.firstOrNull { it.name.endsWith("RequestParam") }?.name ?: ""
+                )
             if (rp != null) {
-                val namePv = rp.parameterValues.firstOrNull { it.name == "name" }?.value as? String
-                val valuePv = rp.parameterValues.firstOrNull { it.name == "value" }?.value as? String
+                val namePv = rp.getString("name")
+                val valuePv = rp.getString("value")
                 val rpName = when {
                     !namePv.isNullOrBlank() -> namePv
                     !valuePv.isNullOrBlank() -> valuePv
                     !pi.name.isNullOrBlank() -> pi.name
                     else -> "p$idx"
                 }
-                val requiredFlag = (rp.parameterValues.firstOrNull { it.name == "required" }?.value as? Boolean)
-                val anns = pi.annotationInfo.map { it.classInfo.name }
+                val requiredFlag = rp.getBoolean("required")
+                val anns = pi.annotationInfo.map { it.name }
                 val isOptionalByAnn = anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                 val optional = (requiredFlag == false) || isOptionalByAnn
                 out += ApiAdapter.QueryParam(idx, rpName!!, optional)

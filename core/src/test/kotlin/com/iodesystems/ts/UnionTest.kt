@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.iodesystems.ts.lib.Asserts.assertContains
 import com.iodesystems.ts.lib.TestUtils.content
 import com.iodesystems.ts.lib.TestUtils.emitter
+import com.iodesystems.ts.lib.getExternalClasspath
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -11,6 +12,17 @@ import org.springframework.web.bind.annotation.RestController
 import kotlin.test.Test
 
 class UnionTest {
+
+    @Test
+    fun object_unions() {
+        val emitter = emitter {
+            packageAccept("com.external.unions.ObjectUnions")
+            classPathUrls { getExternalClasspath() }
+        }
+        val result = emitter.ts().content()
+//        println(result)
+    }
+
 
     @RestController
     @RequestMapping

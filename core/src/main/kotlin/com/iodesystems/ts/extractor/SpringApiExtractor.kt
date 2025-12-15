@@ -2,6 +2,7 @@ package com.iodesystems.ts.extractor
 
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.extractor.registry.ApiRegistry
+import com.iodesystems.ts.lib.AnnotationUtils
 import com.iodesystems.ts.lib.Log.logger
 import com.iodesystems.ts.model.TsHttpMethod
 import io.github.classgraph.AnnotationInfo
@@ -17,7 +18,7 @@ class SpringApiExtractor(
 
     override fun extract(scan: ScanResult): ApiRegistry {
         val controllers: List<ClassInfo> = scan.getClassesWithAnnotation(RestController::class.java)
-            .filter { it.getAnnotationInfo(RequestMapping::class.java) != null }
+            .filter { AnnotationUtils.hasAnnotation(it, RequestMapping::class) }
             .filter { ci -> config.includeApi(ci.name) }
 
         // Warn once if it seems parameter names were not compiled with -parameters
@@ -25,7 +26,7 @@ class SpringApiExtractor(
 
         return ApiRegistry.build {
             controllers.forEach { controllerInfo ->
-                val basePath = annotationPath(controllerInfo.getAnnotationInfo(RequestMapping::class.java))
+                val basePath = annotationPath(AnnotationUtils.getAnnotation(controllerInfo, RequestMapping::class))
                 api(controllerInfo.name) {
                     if (basePath.isNotBlank()) basePath(basePath)
 
@@ -44,7 +45,7 @@ class SpringApiExtractor(
 
                             // Find body parameter index if present
                             val bodyIdx =
-                                mi.parameterInfo.indexOfFirst { it.getAnnotationInfo(RequestBody::class.java) != null }
+                                mi.parameterInfo.indexOfFirst { AnnotationUtils.hasAnnotation(it, RequestBody::class) }
                             // New rule: Body is allowed for non-GET methods, but MUST NOT be present for GET
                             if ((http == TsHttpMethod.GET) && bodyIdx != -1) {
                                 throw IllegalStateException("HTTP $http method '${controllerInfo.name}.${mi.name}' must not declare a  @RequestBody.")
@@ -60,16 +61,14 @@ class SpringApiExtractor(
                                 val seenQueryNames = HashSet<String>()
                                 val seenPathNames = HashSet<String>()
                                 mi.parameterInfo.forEachIndexed { idx, pi ->
-                                    if (pi.getAnnotationInfo(RequestBody::class.java) != null) return@forEachIndexed
-                                    val rp = pi.getAnnotationInfo(RequestParam::class.java)
-                                    val pv = pi.getAnnotationInfo(PathVariable::class.java)
+                                    if (AnnotationUtils.hasAnnotation(pi, RequestBody::class)) return@forEachIndexed
+                                    val rp = AnnotationUtils.getAnnotation(pi, RequestParam::class)
+                                    val pv = AnnotationUtils.getAnnotation(pi, PathVariable::class)
 
-                                    if (rp != null || pi.annotationInfo.any { it.classInfo.name.endsWith("RequestParam") }) {
+                                    if (rp != null || pi.annotationInfo.any { it.name.endsWith("RequestParam") }) {
                                         val rpName = run {
-                                            val namePv =
-                                                rp?.parameterValues?.firstOrNull { it.name == "name" }?.value as? String
-                                            val valuePv =
-                                                rp?.parameterValues?.firstOrNull { it.name == "value" }?.value as? String
+                                            val namePv = rp?.getString("name")
+                                            val valuePv = rp?.getString("value")
                                             when {
                                                 !namePv.isNullOrBlank() -> namePv
                                                 !valuePv.isNullOrBlank() -> valuePv
@@ -91,9 +90,8 @@ class SpringApiExtractor(
                                         }
 
                                         // Optional if RequestParam.required=false or annotated as optional/nullable per Config
-                                        val requiredFlag =
-                                            (rp?.parameterValues?.firstOrNull { it.name == "required" }?.value as? Boolean)
-                                        val anns = pi.annotationInfo.map { it.classInfo.name }
+                                        val requiredFlag = rp?.getBoolean("required")
+                                        val anns = pi.annotationInfo.map { it.name }
                                         val isOptionalByAnn =
                                             anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                                         val optional = (requiredFlag == false) || isOptionalByAnn
@@ -102,18 +100,19 @@ class SpringApiExtractor(
                                         return@forEachIndexed
                                     }
 
-                                    if (pv != null || pi.annotationInfo.any { it.classInfo.name.endsWith("PathVariable") }) {
-                                        val ann =
-                                            pv ?: pi.annotationInfo.first { it.classInfo.name.endsWith("PathVariable") }
-                                        val annName =
-                                            ann.parameterValues.firstOrNull { it.name == "name" || it.name == "value" }?.value as? String
+                                    // Handle @PathVariable - try standard annotation first, then fallback to any *PathVariable
+                                    val pvAnn = pv ?: pi.annotationInfo.firstOrNull { it.name.endsWith("PathVariable") }
+                                        ?.let { AnnotationUtils.getAnnotation(listOf(it), it.name) }
+                                    if (pvAnn != null) {
+                                        val annName = pvAnn.getString("name")?.takeIf { it.isNotBlank() }
+                                            ?: pvAnn.getString("value")?.takeIf { it.isNotBlank() }
                                         val paramName = pi.name ?: "p$idx"
-                                        val placeholder = if (!annName.isNullOrBlank()) annName else paramName
+                                        val placeholder = annName ?: paramName
                                         if (!seenPathNames.add(placeholder)) {
                                             throw IllegalStateException("Duplicate path variable '{$placeholder}' in ${controllerInfo.name}.${mi.name}.")
                                         }
                                         // For path variables, optional isn't typical; accept nullable/optional annotations for completeness
-                                        val anns = pi.annotationInfo.map { it.classInfo.name }
+                                        val anns = pi.annotationInfo.map { it.name }
                                         val isOptionalByAnn =
                                             anns.any { it in config.optionalAnnotations || it in config.nullableAnnotations }
                                         pathParam(idx, placeholder, paramName, isOptionalByAnn)
@@ -166,5 +165,11 @@ class SpringApiExtractor(
                 else -> v?.toString() ?: ""
             }
         } ?: ""
+    }
+
+    private fun annotationPath(annotation: AnnotationUtils.AnnotationValues?): String {
+        if (annotation == null) return ""
+        val v = annotation["value"] ?: annotation["path"] ?: return ""
+        return v.asString() ?: ""
     }
 }
