@@ -330,12 +330,17 @@ class Emitter(
                 val ctx = writeContextForType()
                 if (ctx != o) {
                     val path = o.importFrom(ctx).dropLast(3)
-                    val names = importTypes.filter {
+                    // Strip generic type parameters from import names (e.g., "DataSetResponse<T>" -> "DataSetResponse")
+                    val names = importTypes.map { name ->
+                        val ltIndex = name.indexOf('<')
+                        if (ltIndex != -1) name.substring(0, ltIndex) else name
+                    }.filter {
                         !o.alreadyImported.contains(it)
-                    }.toList().sorted()
+                    }.toSet().toList().sorted()
                     o.alreadyImported.addAll(names)
-                    o.write("import { ${names.joinToString(", ")} } from '$path'\n")
-
+                    if (names.isNotEmpty()) {
+                        o.write("import { ${names.joinToString(", ")} } from '$path'\n")
+                    }
                 }
             }
 

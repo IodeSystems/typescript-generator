@@ -44,4 +44,11 @@ object Asserts {
         ignoreCase = false,
         message = why
     )
+
+    fun String.assertNotContains(fragment: String, why: String) {
+        kotlin.test.assertFalse(
+            this.contains(fragment),
+            "$why\nFound '$fragment' in:\n$this"
+        )
+    }
 }
