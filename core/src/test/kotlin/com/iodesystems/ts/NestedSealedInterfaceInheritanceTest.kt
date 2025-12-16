@@ -92,6 +92,23 @@ class NestedSealedInterfaceInheritanceTest {
         fun getSlugRef(): SlugRef = error("test")
     }
 
+    /**
+     * Controller that directly references a union member (Ref.Loc) instead of the union type (Ref).
+     * This tests that when a specific union member is referenced directly, it still gets
+     * the proper discriminator from its parent sealed interface.
+     */
+    @RestController
+    @RequestMapping("/direct-ref")
+    class DirectRefController {
+        data class CreateEvent(
+            val loc: Ref.Loc,  // Direct reference to union member
+            val name: String
+        )
+
+        @GetMapping("/create")
+        fun create(): CreateEvent = error("test")
+    }
+
     @Test
     fun refUnion_shouldOnlyContainDirectPermittedSubclasses() {
         val em = emitter(NestedController::class)
@@ -155,6 +172,44 @@ class NestedSealedInterfaceInheritanceTest {
         ts.assertContains(
             fragment = "orgId: number",
             why = "SlugRef.Org should have orgId field from parent Ref.Org"
+        )
+    }
+
+    /**
+     * Tests that when a union member is directly referenced (e.g., Ref.Loc instead of Ref),
+     * it still gets the proper discriminator from its parent sealed interface.
+     *
+     * Previously, this would generate:
+     *   export type RefLoc = RefBu
+     *   export type RefBu = RefOrg
+     *   export type RefOrg = RefUnion
+     *
+     * Now it correctly generates:
+     *   export type RefLoc = Ref & { "_type": "Loc" }
+     */
+    @Test
+    fun directUnionMemberReference_shouldHaveDiscriminator() {
+        val em = emitter(DirectRefController::class)
+        val ts = em.ts().content()
+
+        // RefLoc should be a proper union member with discriminator, not an alias chain
+        ts.assertContains(
+            fragment = "NestedSealedInterfaceInheritanceTestRefLoc = NestedSealedInterfaceInheritanceTestRef & {",
+            why = "RefLoc should intersect with Ref interface"
+        )
+        ts.assertContains(
+            fragment = "\"@type\": \"Loc\"",
+            why = "RefLoc should have discriminator field"
+        )
+
+        // RefLoc should NOT be just an alias to RefBu or RefUnion
+        ts.assertNotContains(
+            fragment = "NestedSealedInterfaceInheritanceTestRefLoc = NestedSealedInterfaceInheritanceTestRefBu",
+            why = "RefLoc should NOT be an alias to RefBu"
+        )
+        ts.assertNotContains(
+            fragment = "NestedSealedInterfaceInheritanceTestRefLoc = NestedSealedInterfaceInheritanceTestRefUnion",
+            why = "RefLoc should NOT be an alias to RefUnion"
         )
     }
 }

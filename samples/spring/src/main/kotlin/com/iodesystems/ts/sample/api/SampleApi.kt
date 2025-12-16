@@ -1,8 +1,8 @@
 package com.iodesystems.ts.sample.api
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.iodesystems.ts.sample.model.Ref
-import com.iodesystems.ts.sample.model.SlugRef
+import com.iodesystems.web.api.models.Ref
+import com.iodesystems.web.api.models.SlugRef
 import org.springframework.web.bind.annotation.*
 import java.time.OffsetDateTime
 
@@ -49,7 +49,7 @@ class SampleApi {
     // correctly processed when referenced from API methods
 
     @GetMapping("/ref")
-    fun getRef(): Ref {
+    fun getRef(ref:Ref): Ref {
         return Ref.Org(orgId = 1)
     }
 

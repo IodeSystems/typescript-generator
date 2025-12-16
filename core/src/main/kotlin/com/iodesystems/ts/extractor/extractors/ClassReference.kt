@@ -359,6 +359,12 @@ class ClassReference(
         optional: Boolean
     ): TsType {
         val fqcn = clazz.name
+
+        // Check cache first
+        typeCache[fqcn]?.let {
+            return it.inlineReference(nullable = nullable, optional = optional)
+        }
+
         // Use the name after the package (includes outer class names)
         val tsName = config.customNaming(fqcn.removePrefix(clazz.packageName.plus(".")))
 
@@ -367,13 +373,17 @@ class ClassReference(
         val unionLiteral = jsonAdapter?.enumSerializedTypeOrNull(scan, fqcn, enumNames)
             ?: enumNames.joinToString(" | ") { "'$it'" }
 
-        return TsType.Enum(
+        val result = TsType.Enum(
             fqcn = fqcn,
             name = tsName,
             nullable = nullable,
             optional = optional,
             unionLiteral = unionLiteral
         )
+
+        // Cache the enum type
+        typeCache[fqcn] = result
+        return result
     }
 
     private fun extractUnionType(
@@ -622,6 +632,15 @@ class ClassReference(
                 val ifaceType = toTsType(genericIface, false, false, typeParams)
                 intersections.add(ifaceType)
             }
+        }
+
+        // After extracting intersections, check if the cache was updated with a better type
+        // (e.g., a union child type with discriminator from parent sealed interface extraction)
+        val updatedCacheEntry = typeCache[cacheKey]
+        if (updatedCacheEntry != null && updatedCacheEntry !== placeholder) {
+            // The cache was updated (likely by union extraction triggered through intersection processing)
+            // Return the updated type instead of creating a plain Object type
+            return updatedCacheEntry.inlineReference(nullable = nullable, optional = optional)
         }
 
         val result = TsType.Object(

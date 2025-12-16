@@ -1,5 +1,16 @@
 import type {Dayjs} from 'dayjs'
 import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+import { EventApiCreate, EventApiCreateResponseUnion } from './api-types'
+export class EventApi {
+  constructor(private opts: ApiOptions = {}) {}
+  create(req: EventApiCreate): Promise<EventApiCreateResponseUnion> {
+    return fetchInternal(this.opts, "/api/orgs/events/create", {
+      method: "POST",
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(req)
+    }).then(r=>r.json())
+  }
+}
 import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiPing, SampleApiPingResponseUnion, SlugRefUnion } from './api-types'
 export class SampleApi {
   constructor(private opts: ApiOptions = {}) {}
