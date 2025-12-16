@@ -41,9 +41,9 @@ class QueryParamsTest {
         content.assertContains(
             """
             export type QueryParamsControllerListQuery = {
-              name?: string | null | undefined
-              minAge?: number | null | undefined
               ids: Array<number>
+              minAge?: number | null | undefined
+              name?: string | null | undefined
               users: Array<QUser>
             }
         """.trimIndent(), "The query type should be emitted"

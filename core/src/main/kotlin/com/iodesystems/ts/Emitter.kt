@@ -220,7 +220,7 @@ class Emitter(
         lib.write(lib())
         lib.write("\n")
 
-        extraction.types.forEach { type ->
+        extraction.types.sortedBy { it.name }.forEach { type ->
             val o = writeContextForType()
             o.ownedTypes.add(type.name)
             typeLocations[type.name] = o
@@ -260,7 +260,7 @@ class Emitter(
                     type.discriminator?.let { (key, value) ->
                         o.write("  \"${key}\": \"$value\"\n")
                     }
-                    type.fields.forEach { (field, f) ->
+                    type.fields.entries.sortedBy { it.key }.forEach { (field, f) ->
                         if (discriminatorKey != null && field == discriminatorKey) return@forEach
                         o.write("  ${fieldName(field)}")
                         if (f.optional) {
@@ -281,7 +281,7 @@ class Emitter(
                 }
 
                 is TsType.Union -> {
-                    val unionBody = type.children.joinToString(" | ") { child ->
+                    val unionBody = type.children.sortedBy { it.name }.joinToString(" | ") { child ->
                         tsNameWithGenericsResolved(child)
                     }
                     if (type.supertypes.isNotEmpty()) {

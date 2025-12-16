@@ -149,39 +149,6 @@ class TypeScriptGeneratorTest {
         //<api.ts>
         //import type {Dayjs} from 'dayjs'
         /**
-         * Jvm {@link com.iodesystems.ts.TestApi$Simple}
-         * METHOD ref:
-         * - {@link TestApi#post}
-         */
-        export type TestApiSimple = {
-          a?: string | null | undefined
-          b?: string | undefined
-          num: number
-          flag: boolean
-          name: string
-          tags: Array<string>
-          points: Array<number>
-          attrs: Record<string,string>
-          nested: Record<string,Array<Array<number>>>
-          date: LocalDate
-          time: LocalTime
-          at: OffsetDateTime
-          price: BigDecimal
-          huge: BigInteger
-        }
-        /**
-         * Jvm {@link java.time.LocalDate}
-         */
-        export type LocalDate = string
-        /**
-         * Jvm {@link java.time.LocalTime}
-         */
-        export type LocalTime = string
-        /**
-         * Jvm {@link java.time.OffsetDateTime}
-         */
-        export type OffsetDateTime = Dayjs | string
-        /**
          * Jvm {@link java.math.BigDecimal}
          */
         export type BigDecimal = number
@@ -192,11 +159,69 @@ class TypeScriptGeneratorTest {
           lowestSetBit: number
         }
         /**
-         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response}
+         * Jvm {@link java.time.LocalDate}
+         */
+        export type LocalDate = string
+        /**
+         * Jvm {@link java.time.LocalTime}
+         */
+        export type LocalTime = string
+        /**
+         * Jvm {@link com.iodesystems.ts.Nested$SomeInterface}
+         * TYPE ref:
+         * - {@link ReferencedType}
+         */
+        export type NestedSomeInterface = {
+          interfaceValue: string
+        }
+        /**
+         * Jvm {@link java.time.OffsetDateTime}
+         */
+        export type OffsetDateTime = Dayjs | string
+        /**
+         * Jvm {@link com.iodesystems.ts.ReferencedType}
+         */
+        export type ReferencedType = NestedSomeInterface & {
+          circularTypeReference: ReferencedType | null
+        }
+        /**
+         * Jvm {@link com.iodesystems.ts.TestApi$GetResult}
+         * METHOD ref:
+         * - {@link TestApi#get}
+         */
+        export type TestApiGetResult = {
+          bd: BigDecimal
+          bi: BigInteger
+          crazy: Record<string,Array<Array<number>>>
+          d: LocalDate
+          ints: Array<number>
+          meta: Record<string,string>
+          odt: OffsetDateTime
+          s: string
+          t: LocalTime
+          tags: Array<string>
+        }
+        /**
+         * Jvm {@link com.iodesystems.ts.TestApi$Simple}
          * METHOD ref:
          * - {@link TestApi#post}
          */
-        export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
+        export type TestApiSimple = {
+          a?: string | null | undefined
+          at: OffsetDateTime
+          attrs: Record<string,string>
+          b?: string | undefined
+          date: LocalDate
+          flag: boolean
+          huge: BigInteger
+          name: string
+          nested: Record<string,Array<Array<number>>>
+          num: number
+          points: Array<number>
+          price: BigDecimal
+          tags: Array<string>
+          time: LocalTime
+        }
         /**
          * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response}
          * TYPE ref:
@@ -213,20 +238,6 @@ class TypeScriptGeneratorTest {
           t: ReferencedType
         }
         /**
-         * Jvm {@link com.iodesystems.ts.ReferencedType}
-         */
-        export type ReferencedType = NestedSomeInterface & {
-          circularTypeReference: ReferencedType | null
-        }
-        /**
-         * Jvm {@link com.iodesystems.ts.Nested$SomeInterface}
-         * TYPE ref:
-         * - {@link ReferencedType}
-         */
-        export type NestedSomeInterface = {
-          interfaceValue: string
-        }
-        /**
          * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response$Ok}
          */
         export type TestApiSimpleResponseOk = TestApiSimpleResponse & {
@@ -235,22 +246,11 @@ class TypeScriptGeneratorTest {
           interfaceValue: string
         }
         /**
-         * Jvm {@link com.iodesystems.ts.TestApi$GetResult}
+         * Jvm {@link com.iodesystems.ts.TestApi$Simple$Response}
          * METHOD ref:
-         * - {@link TestApi#get}
+         * - {@link TestApi#post}
          */
-        export type TestApiGetResult = {
-          s: string
-          ints: Array<number>
-          tags: Array<string>
-          meta: Record<string,string>
-          crazy: Record<string,Array<Array<number>>>
-          d: LocalDate
-          t: LocalTime
-          odt: OffsetDateTime
-          bd: BigDecimal
-          bi: BigInteger
-        }
+        export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
         //import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
         export class TestApi {
           constructor(private opts: ApiOptions = {}) {}

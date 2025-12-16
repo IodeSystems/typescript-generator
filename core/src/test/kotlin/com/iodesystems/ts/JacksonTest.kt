@@ -54,11 +54,11 @@ class JacksonTest {
         content.assertContains(
             fragment = """
                 export type JacksonApiPayload = {
-                  renamedViaParam: string
-                  renamedViaField: string
-                  renamedViaGetter: string
                   aka: string
                   code: MyEnum
+                  renamedViaField: string
+                  renamedViaGetter: string
+                  renamedViaParam: string
                 }
             """.trimIndent(),
             why = "JsonProperty/JsonAlias should rename fields; enums emitted as string unions"

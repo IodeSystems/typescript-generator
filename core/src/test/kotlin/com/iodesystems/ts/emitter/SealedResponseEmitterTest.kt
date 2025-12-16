@@ -85,8 +85,12 @@ class SealedResponseEmitterTest {
             "Success variant type should be defined"
         )
         result.assertContains(
-            "\n  \"@type\": \"Success\"\n  result: number\n",
-            "Success should include discriminator and result field"
+            "\n  \"@type\": \"Success\"\n",
+            "Success should include discriminator"
+        )
+        result.assertContains(
+            "\n  result: number\n",
+            "Success should include result field"
         )
         // Optional/nullable timestamp is emitted and marked optional (type may vary, do not assert exact type)
         result.assertContains(
@@ -98,15 +102,19 @@ class SealedResponseEmitterTest {
             """
                 export type SealedResponseEmitterTestSampleApiPingResponsePong = SealedResponseEmitterTestSampleApiPingResponse & {
                   "@type": "Pong"
-                  message: string
                   at?: OffsetDateTime | null | undefined
+                  message: string
                 }
             """.trimIndent(),
             "Pong variant type should be defined"
         )
         result.assertContains(
-            "\n  \"@type\": \"Pong\"\n  message: string\n",
-            "Pong should include discriminator and message field"
+            "\n  \"@type\": \"Pong\"\n",
+            "Pong should include discriminator"
+        )
+        result.assertContains(
+            "\n  message: string\n",
+            "Pong should include message field"
         )
     }
 }

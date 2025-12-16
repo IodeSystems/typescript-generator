@@ -48,10 +48,10 @@ class MixedConstructorAndGetterRequestTest {
         c.assertContains(
             """
             export type MixedApiRequest = {
-              param: string
-              wrap: MixedWrapper
               field: boolean
               getter: number
+              param: string
+              wrap: MixedWrapper
             }
         """.trimIndent(),
             why = "Generated types should include ctor values, getters, and fields!"
