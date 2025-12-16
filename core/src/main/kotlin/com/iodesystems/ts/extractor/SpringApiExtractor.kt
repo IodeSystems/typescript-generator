@@ -16,6 +16,17 @@ class SpringApiExtractor(
 ) : ApiExtractor {
     private val log = logger()
 
+    companion object {
+        private val HTTP_MAPPING_ANNOTATIONS = setOf(
+            "org.springframework.web.bind.annotation.RequestMapping",
+            "org.springframework.web.bind.annotation.GetMapping",
+            "org.springframework.web.bind.annotation.PostMapping",
+            "org.springframework.web.bind.annotation.PutMapping",
+            "org.springframework.web.bind.annotation.PatchMapping",
+            "org.springframework.web.bind.annotation.DeleteMapping"
+        )
+    }
+
     override fun extract(scan: ScanResult): ApiRegistry {
         val controllers: List<ClassInfo> = scan.getClassesWithAnnotation(RestController::class.java)
             .filter { AnnotationUtils.hasAnnotation(it, RequestMapping::class) }
@@ -38,7 +49,7 @@ class SpringApiExtractor(
                             // Support @GetMapping/@PostMapping/etc which are meta-annotated with @RequestMapping
                             // Prefer the first mapping annotation that provides a non-blank path/value
                             val methodPath = run {
-                                val anns = mi.annotationInfo.filter { it.classInfo.name.endsWith("Mapping") }
+                                val anns = mi.annotationInfo.filter { it.name.endsWith("Mapping") }
                                 val withPath = anns.firstOrNull { annotationPath(it).isNotBlank() }
                                 annotationPath(withPath ?: anns.firstOrNull())
                             }
@@ -127,12 +138,17 @@ class SpringApiExtractor(
     }
 
     private fun hasHttpMapping(mi: MethodInfo): Boolean =
-        mi.hasAnnotation(RequestMapping::class.java)
+        mi.annotationInfo.any { it.name in HTTP_MAPPING_ANNOTATIONS }
 
     private fun resolveHttpMethod(methodInfo: MethodInfo): TsHttpMethod {
         methodInfo.annotationInfo.forEach { ann ->
-            when (ann.classInfo.name) {
-                RequestMapping::class.java.name -> {
+            when (ann.name) {
+                "org.springframework.web.bind.annotation.GetMapping" -> return TsHttpMethod.GET
+                "org.springframework.web.bind.annotation.PostMapping" -> return TsHttpMethod.POST
+                "org.springframework.web.bind.annotation.PutMapping" -> return TsHttpMethod.PUT
+                "org.springframework.web.bind.annotation.PatchMapping" -> return TsHttpMethod.PATCH
+                "org.springframework.web.bind.annotation.DeleteMapping" -> return TsHttpMethod.DELETE
+                "org.springframework.web.bind.annotation.RequestMapping" -> {
                     val pv = ann.parameterValues.firstOrNull { it.name == "method" }?.value
                     val methods: List<*> = when (pv) {
                         is Array<*> -> pv.toList()

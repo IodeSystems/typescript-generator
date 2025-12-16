@@ -175,9 +175,11 @@ object AnnotationUtils {
 
     /**
      * Get annotation from ClassGraph ClassInfo by annotation class name.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun getAnnotation(classInfo: ClassInfo?, annotationClassName: String): AnnotationValues? {
-        val ann = classInfo?.annotationInfo?.get(annotationClassName) ?: return null
+        val ann = classInfo?.annotationInfo?.firstOrNull { it.name == annotationClassName } ?: return null
         return extractValues(ann)
     }
 
@@ -190,9 +192,11 @@ object AnnotationUtils {
 
     /**
      * Get annotation from ClassGraph MethodInfo by annotation class name.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun getAnnotation(methodInfo: MethodInfo?, annotationClassName: String): AnnotationValues? {
-        val ann = methodInfo?.annotationInfo?.get(annotationClassName) ?: return null
+        val ann = methodInfo?.annotationInfo?.firstOrNull { it.name == annotationClassName } ?: return null
         return extractValues(ann)
     }
 
@@ -205,9 +209,11 @@ object AnnotationUtils {
 
     /**
      * Get annotation from ClassGraph FieldInfo by annotation class name.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun getAnnotation(fieldInfo: FieldInfo?, annotationClassName: String): AnnotationValues? {
-        val ann = fieldInfo?.annotationInfo?.get(annotationClassName) ?: return null
+        val ann = fieldInfo?.annotationInfo?.firstOrNull { it.name == annotationClassName } ?: return null
         return extractValues(ann)
     }
 
@@ -230,23 +236,29 @@ object AnnotationUtils {
 
     /**
      * Check if ClassGraph ClassInfo has annotation.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun hasAnnotation(classInfo: ClassInfo?, annotationClass: KClass<out Annotation>): Boolean {
-        return classInfo?.annotationInfo?.get(annotationClass.java.name) != null
+        return classInfo?.annotationInfo?.any { it.name == annotationClass.java.name } == true
     }
 
     /**
      * Check if ClassGraph MethodInfo has annotation.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun hasAnnotation(methodInfo: MethodInfo?, annotationClass: KClass<out Annotation>): Boolean {
-        return methodInfo?.annotationInfo?.get(annotationClass.java.name) != null
+        return methodInfo?.annotationInfo?.any { it.name == annotationClass.java.name } == true
     }
 
     /**
      * Check if ClassGraph MethodParameterInfo has annotation.
+     * Note: We iterate manually because Kotlin may resolve .get() to ArrayList.get(int)
+     * instead of AnnotationInfoList.get(String).
      */
     fun hasAnnotation(paramInfo: MethodParameterInfo?, annotationClass: KClass<out Annotation>): Boolean {
-        return paramInfo?.annotationInfo?.get(annotationClass.java.name) != null
+        return paramInfo?.annotationInfo?.any { it.name == annotationClass.java.name } == true
     }
 
     // ========== Java reflection-based lookups (handles classloader isolation) ==========
@@ -327,6 +339,32 @@ object AnnotationUtils {
      */
     fun hasAnnotation(field: java.lang.reflect.Field?, annotationClass: KClass<out Annotation>): Boolean {
         return field?.annotations?.any { it.annotationClass.java.name == annotationClass.java.name } == true
+    }
+
+    /**
+     * Get annotation from Java Parameter by annotation class.
+     * Uses name-based lookup to avoid classloader isolation issues.
+     */
+    fun getAnnotation(param: java.lang.reflect.Parameter?, annotationClass: KClass<out Annotation>): AnnotationValues? {
+        return getAnnotation(param, annotationClass.java.name)
+    }
+
+    /**
+     * Get annotation from Java Parameter by annotation class name.
+     * Uses name-based lookup to avoid classloader isolation issues.
+     */
+    fun getAnnotation(param: java.lang.reflect.Parameter?, annotationClassName: String): AnnotationValues? {
+        if (param == null) return null
+        val ann = param.annotations.firstOrNull { it.annotationClass.java.name == annotationClassName }
+            ?: return null
+        return extractValuesFromReflection(ann)
+    }
+
+    /**
+     * Check if Java Parameter has annotation (by name, handles classloader isolation).
+     */
+    fun hasAnnotation(param: java.lang.reflect.Parameter?, annotationClass: KClass<out Annotation>): Boolean {
+        return param?.annotations?.any { it.annotationClass.java.name == annotationClass.java.name } == true
     }
 
     // ========== Combined lookup (tries ClassGraph first, then reflection) ==========

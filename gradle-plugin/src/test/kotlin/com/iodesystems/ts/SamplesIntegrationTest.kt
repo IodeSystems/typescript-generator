@@ -1,10 +1,10 @@
 package com.iodesystems.ts
 
-import org.junit.Ignore
 import org.junit.Test
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SamplesIntegrationTest {
 
@@ -41,7 +41,6 @@ class SamplesIntegrationTest {
         return CmdResult(proc.exitValue(), sb.toString())
     }
 
-    @Ignore("TODO: Re-implement after refactor")
     @Test
     fun `publish plugin to mavenLocal then build sample project`() {
         val root = findRepoRoot()
@@ -50,8 +49,36 @@ class SamplesIntegrationTest {
         runCmd(root, "./gradlew", mvnLocal, skipSigning, "publishToMavenLocal").also { res ->
             assertEquals(0, res.code, "publishToMavenLocal failed. Output:\n${res.output}")
         }
-        runCmd(File(root, "samples/spring"), "./gradlew", mvnLocal, "generateTypescript").also { res ->
+        runCmd(
+            File(root, "samples/spring"),
+            "./gradlew",
+            mvnLocal,
+            "generateTypescript",
+            "--no-configuration-cache"
+        ).also { res ->
             assertEquals(0, res.code, "generateTypescript failed. Output:\n${res.output}")
         }
+
+        // Verify the generated output
+        val apiFile = File(root, "samples/spring/src/main/ui/gen/api.ts")
+        assertTrue(apiFile.exists(), "Generated api.ts file should exist")
+        val apiContent = apiFile.readText()
+
+        // Verify @RequestBody parameters are correctly detected
+        // The add() and ping() methods should have request body parameters
+        assertTrue(
+            apiContent.contains("add(req:") || apiContent.contains("add(req?:"),
+            "add() method should have a request body parameter 'req'. Got:\n$apiContent"
+        )
+        assertTrue(
+            apiContent.contains("ping(req:") || apiContent.contains("ping(req?:"),
+            "ping() method should have a request body parameter 'req'. Got:\n$apiContent"
+        )
+
+        // Verify body is being sent in fetch calls
+        assertTrue(
+            apiContent.contains("body: JSON.stringify(req)"),
+            "Request body should be JSON stringified. Got:\n$apiContent"
+        )
     }
 }

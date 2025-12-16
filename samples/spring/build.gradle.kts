@@ -14,6 +14,7 @@ plugins {
 
 typescriptGenerator {
     config {
+        packageAccept("com.iodesystems.ts.sample.api")
         emitLibAsSeparateFile("api-lib.ts")
         emitTypesAsSeparateFile("api-types.ts")
         outputDirectory("src/main/ui/gen")

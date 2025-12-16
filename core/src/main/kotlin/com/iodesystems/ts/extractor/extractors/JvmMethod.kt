@@ -3,11 +3,14 @@ package com.iodesystems.ts.extractor.extractors
 import com.iodesystems.ts.extractor.JvmExtractor
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinMethod
 import com.iodesystems.ts.extractor.registry.ApiMethodDescriptor
+import com.iodesystems.ts.lib.AnnotationUtils
 import com.iodesystems.ts.model.ApiMethod
 import com.iodesystems.ts.model.TsField
 import com.iodesystems.ts.model.TsType
 import io.github.classgraph.MethodInfo
-import kotlinx.metadata.*
+import kotlinx.metadata.KmFunction
+import kotlinx.metadata.declaresDefaultValue
+import kotlinx.metadata.isNullable
 import org.springframework.web.bind.annotation.RequestBody
 import java.lang.reflect.Method
 
@@ -28,7 +31,7 @@ data class JvmMethod(
             val clazz = methodInfo.classInfo.loadClass()
             clazz.methods.firstOrNull { m ->
                 m.name == methodInfo.name &&
-                m.parameterCount == methodInfo.parameterInfo.size
+                        m.parameterCount == methodInfo.parameterInfo.size
             }
         } catch (e: Exception) {
             null
@@ -55,9 +58,9 @@ data class JvmMethod(
         val method = reflectedMethod ?: return null
         val kmFun = methodInfo.kotlinMethod()
 
-        // Find @RequestBody parameter
+        // Find @RequestBody parameter using name-based lookup to handle classloader isolation
         method.parameters.forEachIndexed { idx, param ->
-            if (param.isAnnotationPresent(RequestBody::class.java)) {
+            if (AnnotationUtils.hasAnnotation(param, RequestBody::class)) {
                 val genericType = method.genericParameterTypes[idx]
                 val kmParam = kmFun?.valueParameters?.getOrNull(idx)
                 val isNullable = kmParam?.type?.isNullable ?: false
@@ -150,6 +153,7 @@ data class JvmMethod(
                 java.lang.Byte::class.java, Byte::class.javaPrimitiveType,
                 java.lang.Double::class.java, Double::class.javaPrimitiveType,
                 java.lang.Float::class.java, Float::class.javaPrimitiveType -> ApiMethod.PathParam.Type.NUMBER
+
                 else -> ApiMethod.PathParam.Type.STRING
             }
 

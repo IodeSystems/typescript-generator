@@ -10,6 +10,12 @@ export type SampleApiAdd = {
 }
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Add$Response}
+ * METHOD ref:
+ * - {@link SampleApi#add}
+ */
+export type SampleApiAddResponseUnion = SampleApiAddResponse & (SampleApiAddResponseFailure | SampleApiAddResponseSuccess)
+/**
+ * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Add$Response}
  * TYPE ref:
  * - {@link SampleApiAddResponseFailure}
  * - {@link SampleApiAddResponseSuccess}
@@ -18,24 +24,13 @@ export type SampleApiAddResponse = {
 }
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Add$Response$Failure}
- * TYPE ref:
- * - {@link SampleApiAddResponseUnion}
  */
 export type SampleApiAddResponseFailure = SampleApiAddResponse & {
   "@type": "Failure"
   error: string
 }
 /**
- * Jvm {@link java.time.OffsetDateTime}
- * TYPE ref:
- * - {@link SampleApiAddResponseSuccess}
- * - {@link SampleApiPingResponsePong}
- */
-export type OffsetDateTime = Dayjs
-/**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Add$Response$Success}
- * TYPE ref:
- * - {@link SampleApiAddResponseUnion}
  */
 export type SampleApiAddResponseSuccess = SampleApiAddResponse & {
   "@type": "Success"
@@ -43,11 +38,9 @@ export type SampleApiAddResponseSuccess = SampleApiAddResponse & {
   at?: OffsetDateTime | null | undefined
 }
 /**
- * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Add$Response#Union}
- * METHOD ref:
- * - {@link SampleApi#add}
+ * Jvm {@link java.time.OffsetDateTime}
  */
-export type SampleApiAddResponseUnion = SampleApiAddResponse & (SampleApiAddResponseFailure | SampleApiAddResponseSuccess)
+export type OffsetDateTime = Dayjs
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping}
  * METHOD ref:
@@ -58,6 +51,12 @@ export type SampleApiPing = {
 }
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping$Response}
+ * METHOD ref:
+ * - {@link SampleApi#ping}
+ */
+export type SampleApiPingResponseUnion = SampleApiPingResponse & (SampleApiPingResponsePong)
+/**
+ * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping$Response}
  * TYPE ref:
  * - {@link SampleApiPingResponsePong}
  */
@@ -65,17 +64,9 @@ export type SampleApiPingResponse = {
 }
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping$Response$Pong}
- * TYPE ref:
- * - {@link SampleApiPingResponseUnion}
  */
 export type SampleApiPingResponsePong = SampleApiPingResponse & {
   "@type": "Pong"
   message: string
   at?: OffsetDateTime | null | undefined
 }
-/**
- * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping$Response#Union}
- * METHOD ref:
- * - {@link SampleApi#ping}
- */
-export type SampleApiPingResponseUnion = SampleApiPingResponse & (SampleApiPingResponsePong)
