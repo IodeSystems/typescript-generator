@@ -14,7 +14,6 @@ import com.iodesystems.ts.lib.TestUtils.extract
 import com.iodesystems.ts.lib.Tree
 import com.iodesystems.ts.model.TsRef
 import com.iodesystems.ts.model.TsType
-import org.junit.Ignore
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
 
@@ -440,7 +439,10 @@ class ExtractorTest {
                     }
             }
 
-        extraction.typeReferences.size.assertEq(2, "There should be type references, request and response, not of the Array type, but of the generic parameter")
+        extraction.typeReferences.size.assertEq(
+            2,
+            "There should be type references, request and response, not of the Array type, but of the generic parameter"
+        )
     }
 
     @RequestMapping
@@ -688,7 +690,10 @@ class ExtractorTest {
                                 obj.fields[discriminator].assertNonNull("Should have discriminator")
                                     .type.name.assertEq("\"Error\"", "Should have Error discriminator")
                                 // shared is inherited from Union interface, not in fields directly
-                                obj.intersections.size.assertEq(1, "Error should have 1 intersection (parent interface)")
+                                obj.intersections.size.assertEq(
+                                    1,
+                                    "Error should have 1 intersection (parent interface)"
+                                )
                                 obj.fields["message"].assertNonNull("Should have message field")
                                     .type.name.assertEq("string", "message should be string")
                             }
@@ -696,5 +701,4 @@ class ExtractorTest {
                 }
             }
     }
-
 }

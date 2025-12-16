@@ -142,20 +142,18 @@ class JacksonJsonAdapter : JsonAdapter {
             }
         }
 
-        // First try ClassGraph scan for implementations (works for classes within scanned packages)
-        var implClasses = scan.getClassesImplementing(clazz.name)
-            .sortedBy { it.simpleName }
-            .map { it.loadClass() }
-
-        // If ClassGraph didn't find any, use Java reflection for sealed classes/interfaces
-        // This handles types from external packages that aren't in the scan path
-        if (implClasses.isEmpty()) {
-            implClasses = try {
-                clazz.permittedSubclasses?.map { it }?.sortedBy { it.simpleName } ?: emptyList()
-            } catch (_: Throwable) {
-                emptyList()
+        // For sealed classes/interfaces, find all subtypes within the sealed hierarchy.
+        // We need to recursively traverse permittedSubclasses because nested classes may
+        // extend each other (e.g., Ref.Bu extends Ref.Org, not Ref directly).
+        // BUT we must exclude classes that also implement another @JsonTypeInfo sealed type
+        // (e.g., SlugRef.Org implements both Ref and SlugRef - it should only appear in SlugRef's union).
+        val implClasses = collectSealedHierarchy(clazz, scan).sortedBy { it.simpleName }
+            .ifEmpty {
+                // Fall back to ClassGraph scan for non-sealed types
+                scan.getClassesImplementing(clazz.name)
+                    .sortedBy { it.simpleName }
+                    .map { it.loadClass() }
             }
-        }
 
         val options = implClasses.map { implClass ->
             val implClassInfo = scan.getClassInfo(implClass.name)
@@ -233,5 +231,81 @@ class JacksonJsonAdapter : JsonAdapter {
         } catch (_: Throwable) {
             null
         }
+    }
+
+    /**
+     * Collects all classes in a sealed hierarchy, starting from the root sealed class/interface.
+     *
+     * This handles cases where sealed subtypes extend each other (e.g., Ref.Bu extends Ref.Org)
+     * by recursively traversing the hierarchy. It also filters out classes that implement
+     * another @JsonTypeInfo sealed type (e.g., SlugRef.Org implements both Ref and SlugRef -
+     * it should only appear in SlugRef's union, not Ref's).
+     */
+    private fun collectSealedHierarchy(rootClass: Class<*>, scan: ScanResult): List<Class<*>> {
+        val result = mutableListOf<Class<*>>()
+        val visited = mutableSetOf<Class<*>>()
+
+        // Collect all nested classes of the root class for reflection-based subclass lookup
+        // This is needed when the classes aren't in ClassGraph's scan path
+        val allNestedClasses: Set<Class<*>> = try {
+            rootClass.declaredClasses.toSet()
+        } catch (_: Throwable) {
+            emptySet()
+        }
+
+        fun shouldSkipClass(clazz: Class<*>): Boolean {
+            // Check if this class also implements another @JsonTypeInfo sealed type
+            // that is not our root class. If so, skip it - it belongs to that other hierarchy.
+            val superTypes = clazz.interfaces.toList() + listOfNotNull(clazz.superclass)
+            return superTypes
+                .filter { superType -> superType != rootClass && superType != Any::class.java && superType != Object::class.java }
+                .any { superType -> AnnotationUtils.hasAnnotation(superType, JsonTypeInfo::class) }
+        }
+
+        fun findReflectionSubclasses(parentClass: Class<*>): List<Class<*>> {
+            // Find nested classes that extend this parent class
+            // This handles cases where ClassGraph didn't scan the package
+            return allNestedClasses
+                .filter { nested -> nested.superclass == parentClass }
+                .filter { nested -> nested !in visited }
+        }
+
+        fun collectRecursive(clazz: Class<*>) {
+            // Get direct permitted subclasses (for sealed classes/interfaces)
+            val permitted: List<Class<*>> = try {
+                clazz.permittedSubclasses?.toList() ?: emptyList()
+            } catch (_: Throwable) {
+                emptyList()
+            }
+
+            // For non-sealed classes (like open class Ref.Org), find subclasses
+            // via ClassGraph first, then fall back to reflection
+            val subclassesFromGraph: List<Class<*>> = scan.getSubclasses(clazz.name)
+                .map { classInfo -> classInfo.loadClass() }
+                .filter { cls -> cls !in visited }
+
+            // If ClassGraph didn't find any (package not scanned), use reflection
+            val subclassesFromReflection = if (subclassesFromGraph.isEmpty()) {
+                findReflectionSubclasses(clazz)
+            } else emptyList()
+
+            // Process all subclasses: permitted (for sealed types) + discovered (for open types)
+            val allSubclasses = (permitted + subclassesFromGraph + subclassesFromReflection).distinct()
+
+            for (subclass in allSubclasses) {
+                if (subclass in visited) continue
+                visited.add(subclass)
+
+                if (shouldSkipClass(subclass)) continue
+
+                result.add(subclass)
+
+                // Recursively collect subclasses of this class
+                collectRecursive(subclass)
+            }
+        }
+
+        collectRecursive(rootClass)
+        return result
     }
 }

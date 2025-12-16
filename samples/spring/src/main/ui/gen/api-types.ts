@@ -61,6 +61,7 @@ export type SampleApiPingResponseUnion = SampleApiPingResponse & (SampleApiPingR
  * - {@link SampleApiPingResponsePong}
  */
 export type SampleApiPingResponse = {
+  at: OffsetDateTime | null
 }
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping$Response$Pong}
@@ -68,5 +69,85 @@ export type SampleApiPingResponse = {
 export type SampleApiPingResponsePong = SampleApiPingResponse & {
   "@type": "Pong"
   message: string
-  at?: OffsetDateTime | null | undefined
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.Ref}
+ * METHOD ref:
+ * - {@link SampleApi#getRef}
+ */
+export type RefUnion = Ref & (RefBu | RefLoc | RefOrg)
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.Ref}
+ * TYPE ref:
+ * - {@link RefBu}
+ * - {@link RefLoc}
+ * - {@link RefOrg}
+ */
+export type Ref = {
+  orgId: number
+  buId: number
+  locId: number
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.Ref$Bu}
+ */
+export type RefBu = Ref & {
+  "@type": "Bu"
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.Ref$Loc}
+ */
+export type RefLoc = Ref & {
+  "@type": "Loc"
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.Ref$Org}
+ */
+export type RefOrg = Ref & {
+  "@type": "Org"
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.SlugRef}
+ * METHOD ref:
+ * - {@link SampleApi#getSlugRef}
+ */
+export type SlugRefUnion = SlugRef & (SlugRefBu | SlugRefLoc | SlugRefOrg)
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.SlugRef}
+ * TYPE ref:
+ * - {@link SlugRefBu}
+ * - {@link SlugRefLoc}
+ * - {@link SlugRefOrg}
+ */
+export type SlugRef = {
+  orgSlug: string
+  buSlug: string
+  locSlug: string
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.SlugRef$Bu}
+ */
+export type SlugRefBu = SlugRef & {
+  "@type": "Bu"
+  orgId: number
+  buId: number
+  locId: number
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.SlugRef$Loc}
+ */
+export type SlugRefLoc = SlugRef & {
+  "@type": "Loc"
+  orgId: number
+  buId: number
+  locId: number
+}
+/**
+ * Jvm {@link com.iodesystems.ts.sample.model.SlugRef$Org}
+ */
+export type SlugRefOrg = SlugRef & {
+  "@type": "Org"
+  orgId: number
+  buId: number
+  locId: number
 }

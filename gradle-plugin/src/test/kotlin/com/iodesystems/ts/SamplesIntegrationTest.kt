@@ -80,5 +80,31 @@ class SamplesIntegrationTest {
             apiContent.contains("body: JSON.stringify(req)"),
             "Request body should be JSON stringified. Got:\n$apiContent"
         )
+
+        // Verify nested sealed interface types are correctly generated
+        // Types are in api-types.ts
+        val typesFile = File(root, "samples/spring/src/main/ui/gen/api-types.ts")
+        assertTrue(typesFile.exists(), "Generated api-types.ts file should exist")
+        val typesContent = typesFile.readText()
+
+        // RefUnion should contain RefOrg, RefBu, RefLoc - NOT SlugRef types
+        val refUnionLine = typesContent.lines().find { it.contains("RefUnion =") && !it.contains("SlugRefUnion") }
+        assertTrue(refUnionLine != null, "RefUnion should be defined. Types:\n$typesContent")
+        assertTrue(
+            refUnionLine!!.contains("RefOrg") && refUnionLine.contains("RefBu") && refUnionLine.contains("RefLoc"),
+            "RefUnion should contain RefOrg, RefBu, RefLoc. Got: $refUnionLine"
+        )
+        assertTrue(
+            !refUnionLine.contains("SlugRef"),
+            "RefUnion should NOT contain SlugRef types. Got: $refUnionLine"
+        )
+
+        // SlugRefUnion should contain SlugRefOrg, SlugRefBu, SlugRefLoc
+        val slugRefUnionLine = typesContent.lines().find { it.contains("SlugRefUnion =") }
+        assertTrue(slugRefUnionLine != null, "SlugRefUnion should be defined")
+        assertTrue(
+            slugRefUnionLine!!.contains("SlugRefOrg") && slugRefUnionLine.contains("SlugRefBu") && slugRefUnionLine.contains("SlugRefLoc"),
+            "SlugRefUnion should contain SlugRefOrg, SlugRefBu, SlugRefLoc. Got: $slugRefUnionLine"
+        )
     }
 }
