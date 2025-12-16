@@ -93,7 +93,20 @@ class Emitter(
 
             val lt = name.indexOf('<')
             val gt = name.lastIndexOf('>')
-            if (lt == -1 || gt == -1 || gt < lt) return name
+
+            // Handle mapped types like "T | null" where generics appear outside angle brackets
+            if (lt == -1 || gt == -1 || gt < lt) {
+                // No angle brackets - substitute generics directly in the name
+                var result = name
+                for ((paramName, paramType) in generics) {
+                    val resolved = tsNameWithGenericsResolved(paramType)
+                    val withNullability = if (paramType.nullable) "$resolved | null" else resolved
+                    // Replace the type parameter name with its resolved type
+                    // Use word boundary matching to avoid replacing partial matches
+                    result = result.replace(Regex("\\b${Regex.escape(paramName)}\\b"), withNullability)
+                }
+                return result
+            }
 
             val base = name.take(lt)
             val genericSection = name.substring(lt + 1, gt)
