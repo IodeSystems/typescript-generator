@@ -74,8 +74,8 @@ class InheritanceTest {
         val ts = em.ts().content()
 
         ts.assertContains(
-            fragment = "isGuest: boolean",
-            why = "Sealed interface with boolean is-prefix property should include isGuest"
+            fragment = "guest: boolean",
+            why = "Sealed interface with boolean is-prefix property should emit 'guest' (Jackson strips 'is' prefix)"
         )
         ts.assertContains(
             fragment = "displayName: string",

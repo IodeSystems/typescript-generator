@@ -10,6 +10,7 @@ plugins {
     id("idea")
     id("com.github.node-gradle.node")
     id("com.iodesystems.typescript-generator")
+    id("org.springframework.boot")
 }
 
 typescriptGenerator {

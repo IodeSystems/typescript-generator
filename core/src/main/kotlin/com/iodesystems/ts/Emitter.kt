@@ -282,7 +282,8 @@ class Emitter(
                         o.write(": ")
                         val fieldType = tsNameWithGenericsResolved(f.type)
                         o.write(fieldType)
-                        if (f.nullable) {
+                        // Only add | null if the type doesn't already end with | null (avoids duplication)
+                        if (f.nullable && !fieldType.endsWith("| null")) {
                             o.write(" | null")
                         }
                         if (f.optional) {

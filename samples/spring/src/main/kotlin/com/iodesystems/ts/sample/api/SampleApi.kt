@@ -5,6 +5,7 @@ import com.iodesystems.web.api.models.Ref
 import com.iodesystems.web.api.models.SlugRef
 import org.springframework.web.bind.annotation.*
 import java.time.OffsetDateTime
+import java.util.Optional
 
 @RestController
 @RequestMapping("/api/sample")
@@ -56,5 +57,27 @@ class SampleApi {
     @GetMapping("/slug-ref")
     fun getSlugRef(): SlugRef {
         return SlugRef.Org(orgId = 1, orgSlug = "acme")
+    }
+
+    // Test various is-prefix boolean scenarios to verify Jackson serialization behavior
+    data class IsPrefixTest(
+        val isActive: Boolean,                    // Should become "active" in JSON
+        val isOptional: Optional<Boolean>,        // Unknown - test this
+        val isNullable: Boolean?,                 // Kotlin nullable boolean
+        val isOptionalNullable: Optional<Boolean>?, // Nullable optional
+        val enabled: Boolean,                     // Control - no is-prefix
+        val isURL: Boolean,                       // Uppercase after is
+    )
+
+    @GetMapping("/is-prefix-test")
+    fun getIsPrefixTest(): IsPrefixTest {
+        return IsPrefixTest(
+            isActive = true,
+            isOptional = Optional.of(true),
+            isNullable = null,
+            isOptionalNullable = Optional.empty(),
+            enabled = true,
+            isURL = false,
+        )
     }
 }

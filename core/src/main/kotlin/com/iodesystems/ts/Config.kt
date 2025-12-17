@@ -83,6 +83,18 @@ data class Config(
     // Enables extra diagnostic logs from heavy phases (type registration, queue sizes, memory snapshots).
     // Keep default false to avoid overhead in normal runs.
     val diagnosticLogging: Boolean = false,
+    // Jackson naming behavior options (mirrors MapperFeature settings)
+    // AUTO_DETECT_IS_GETTERS: When true, boolean isX() getters are detected and "is" prefix is stripped.
+    // E.g., isActive() -> "active" in JSON. Default true (matches Jackson default).
+    val autoDetectIsGetters: Boolean = true,
+    // ALLOW_IS_GETTERS_FOR_NON_BOOLEAN: When true, isX() methods returning non-boolean types also have
+    // "is" prefix stripped. E.g., isOptional(): Optional<Boolean> -> "optional" in JSON.
+    // Default true (matches Jackson 2.14+ default, added for Kotlin support).
+    val allowIsGettersForNonBoolean: Boolean = true,
+    // USE_STD_BEAN_NAMING: When true, use strict JavaBeans naming rules where leading uppercase is
+    // preserved unless followed by another lowercase letter. E.g., getURL() -> "URL" (not "url").
+    // Default false (matches Jackson default which always lowercases: getURL() -> "url").
+    val useStdBeanNaming: Boolean = false,
 ) : Serializable {
 
     override fun toString(): String {
@@ -324,6 +336,21 @@ data class Config(
                 lines += "/* eslint-disable $rule */"
             }
             return headerLines(*lines.toTypedArray())
+        }
+
+        /** Whether to detect boolean isX() getters and strip "is" prefix. Default true (Jackson default). */
+        fun autoDetectIsGetters(enabled: Boolean): Builder {
+            config = config.copy(autoDetectIsGetters = enabled); return this
+        }
+
+        /** Whether to also strip "is" prefix from non-boolean isX() methods. Default true (Jackson 2.14+). */
+        fun allowIsGettersForNonBoolean(enabled: Boolean): Builder {
+            config = config.copy(allowIsGettersForNonBoolean = enabled); return this
+        }
+
+        /** Whether to use strict JavaBeans naming (getURL -> URL). Default false (Jackson default: getURL -> url). */
+        fun useStdBeanNaming(enabled: Boolean): Builder {
+            config = config.copy(useStdBeanNaming = enabled); return this
         }
     }
 
