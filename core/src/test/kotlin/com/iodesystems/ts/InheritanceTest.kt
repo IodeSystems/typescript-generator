@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.iodesystems.ts.lib.Asserts.assertContains
 import com.iodesystems.ts.lib.TestUtils.content
 import com.iodesystems.ts.lib.TestUtils.emitter
-import org.junit.Ignore
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -13,6 +12,24 @@ import kotlin.test.Test
 @RestController
 @RequestMapping("/inherit/")
 class InheritanceApi {
+
+    // Test case: sealed interface with boolean property using is-prefix getter
+    @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+    sealed interface User {
+        val isGuest: Boolean get() = this is Guest
+        val displayName: String
+            get() = when (this) {
+                is Guest -> "Guest"
+                is Authenticated -> "User $userId"
+            }
+
+        data object Guest : User
+
+        data class Authenticated(val userId: Long) : User
+    }
+
+    @GetMapping("/user")
+    fun getUser(): User = error("test")
 
     open class Base(open val id: String)
 
@@ -52,6 +69,21 @@ class InheritanceApi {
 class InheritanceTest {
 
     @Test
+    fun sealedInterface_withBooleanIsGetter_includesProperty() {
+        val em = emitter(InheritanceApi::class)
+        val ts = em.ts().content()
+
+        ts.assertContains(
+            fragment = "isGuest: boolean",
+            why = "Sealed interface with boolean is-prefix property should include isGuest"
+        )
+        ts.assertContains(
+            fragment = "displayName: string",
+            why = "Sealed interface with computed property should include displayName"
+        )
+    }
+
+    @Test
     fun objectInheritance_isRenderedAsIntersection() {
         val em = emitter(InheritanceApi::class)
         val ts = em.ts().content()
@@ -75,11 +107,7 @@ class InheritanceTest {
         )
 
         ts.assertContains(
-            fragment = """
-                export class InheritanceApi {
-                  constructor(private opts: ApiOptions = {}) {}
-                  getChild(): Promise<InheritanceApiChild> {
-            """.trimIndent(),
+            fragment = "getChild(): Promise<InheritanceApiChild> {",
             why = "API should return the inherited type"
         )
     }

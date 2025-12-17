@@ -309,7 +309,7 @@ data class Config(
 
         /** Set static header lines to be written at the top of every generated TS file. */
         fun headerLines(vararg lines: String): Builder {
-            config = config.copy(headerLines = lines.toList()); return this
+            config = config.copy(headerLines = config.headerLines + lines); return this
         }
 
         fun eslintDisable(
@@ -317,7 +317,7 @@ data class Config(
             disableNoUnusedVars: Boolean = true,
             vararg otherRulesToDisable: String,
         ): Builder {
-            val lines = mutableListOf<String>()
+            val lines = config.headerLines.toMutableList()
             if (disableNoExplicitAny) lines += "/* eslint-disable @typescript-eslint/no-explicit-any */"
             if (disableNoUnusedVars) lines += "/* eslint-disable @typescript-eslint/no-unused-vars */"
             otherRulesToDisable.forEach { rule ->

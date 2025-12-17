@@ -558,16 +558,25 @@ class ClassReference(
             names.addAll(kmClass.properties.map { it.name })
         }
 
-        // Also add getter-based properties
+        // Also add getter-based properties (get* and boolean is* getters)
         clazz.methods.filter { method ->
-            method.name.startsWith("get") &&
-            method.name.length > 3 &&
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
             method.declaringClass != Any::class.java &&
-            method.declaringClass != Object::class.java
+            method.declaringClass != Object::class.java &&
+            (
+                (method.name.startsWith("get") && method.name.length > 3) ||
+                (method.name.startsWith("is") && method.name.length > 2 &&
+                    (method.returnType == Boolean::class.java || method.returnType == Boolean::class.javaPrimitiveType))
+            )
         }.forEach { getter ->
-            names.add(getter.name.substring(3).replaceFirstChar { it.lowercase() })
+            val propName = if (getter.name.startsWith("get")) {
+                getter.name.substring(3).replaceFirstChar { it.lowercase() }
+            } else {
+                // is* getter - property name is the method name as-is
+                getter.name
+            }
+            names.add(propName)
         }
 
         return names
@@ -705,15 +714,24 @@ class ClassReference(
         }
 
         // Also include getters (for non-data classes and Java classes)
+        // Handle both get* and boolean is* getters
         clazz.methods.filter { method ->
-            method.name.startsWith("get") &&
-            method.name.length > 3 &&
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
             method.declaringClass != Any::class.java &&
-            method.declaringClass != Object::class.java
+            method.declaringClass != Object::class.java &&
+            (
+                (method.name.startsWith("get") && method.name.length > 3) ||
+                (method.name.startsWith("is") && method.name.length > 2 &&
+                    (method.returnType == Boolean::class.java || method.returnType == Boolean::class.javaPrimitiveType))
+            )
         }.forEach { getter ->
-            val propName = getter.name.substring(3).replaceFirstChar { it.lowercase() }
+            val propName = if (getter.name.startsWith("get")) {
+                getter.name.substring(3).replaceFirstChar { it.lowercase() }
+            } else {
+                // is* getter - property name is the method name as-is
+                getter.name
+            }
             // Skip excluded fields (inherited from superclass)
             if (propName in excludeFields) return@forEach
 
