@@ -52,9 +52,13 @@ class SpringApiExtractor(
             controllers.forEach { (controllerInfo, clazz) ->
                 // Use AnnotationUtils to get merged annotation (handles @AliasFor and classloader isolation)
                 val requestMapping = AnnotationUtils.getAnnotation(clazz, RequestMapping::class)
+                log.debug("RequestMapping annotation for ${clazz.name}: $requestMapping")
+                log.debug("  path: ${requestMapping?.getStringList("path")}")
+                log.debug("  value: ${requestMapping?.getStringList("value")}")
                 val basePath = requestMapping?.getStringList("path")?.firstOrNull()
                     ?: requestMapping?.getStringList("value")?.firstOrNull()
                     ?: ""
+                log.debug("  resolved basePath: '$basePath'")
                 api(controllerInfo.name) {
                     if (basePath.isNotBlank()) basePath(basePath)
 

@@ -264,6 +264,8 @@ object AnnotationUtils {
 
     // ========== Java reflection-based lookups (uses Spring merged annotations for @AliasFor support) ==========
 
+    private val log = with(Log) { logger() }
+
     /**
      * Loads an annotation class from the target's classloader to handle classloader isolation.
      * This is critical for Gradle plugin context where the plugin and project have different classloaders.
@@ -275,24 +277,114 @@ object AnnotationUtils {
     private fun loadAnnotationClass(targetClassLoader: ClassLoader?, annotationClassName: String): Class<out Annotation>? {
         return try {
             @Suppress("UNCHECKED_CAST")
-            targetClassLoader?.loadClass(annotationClassName) as? Class<out Annotation>
+            val loaded = targetClassLoader?.loadClass(annotationClassName) as? Class<out Annotation>
                 ?: Class.forName(annotationClassName) as? Class<out Annotation>
-        } catch (_: Exception) {
+            log.debug("Loaded annotation class $annotationClassName from classloader: ${loaded?.classLoader}")
+            loaded
+        } catch (e: Exception) {
+            log.debug("Failed to load annotation class $annotationClassName: ${e.message}")
             null
         }
     }
 
     /**
      * Get annotation from Java Class by annotation class.
-     * Uses Spring's merged annotation support to resolve @AliasFor meta-annotations.
-     * Handles classloader isolation by loading the annotation class from the target's classloader.
+     * Uses our own meta-annotation traversal to handle @AliasFor across classloaders.
+     * Spring's AnnotatedElementUtils doesn't work correctly when classloaders differ.
      */
     fun getAnnotation(clazz: Class<*>?, annotationClass: KClass<out Annotation>): AnnotationValues? {
         if (clazz == null) return null
-        // Load annotation class from target's classloader to handle Gradle plugin classloader isolation
-        val annClass = loadAnnotationClass(clazz.classLoader, annotationClass) ?: return null
-        val ann = AnnotatedElementUtils.findMergedAnnotation(clazz, annClass) ?: return null
-        return extractValuesFromReflection(ann)
+        log.debug("getAnnotation for class ${clazz.name}, looking for ${annotationClass.java.name}")
+
+        // First, try to find the annotation directly on the class
+        val directAnn = clazz.annotations.firstOrNull { it.annotationClass.java.name == annotationClass.java.name }
+        if (directAnn != null) {
+            log.debug("  found direct annotation: $directAnn")
+            return extractValuesFromReflection(directAnn)
+        }
+
+        // If not found directly, look for meta-annotations that have @AliasFor pointing to our target
+        for (ann in clazz.annotations) {
+            val metaResult = findMergedAnnotationWithAliasFor(ann, annotationClass.java.name, clazz.classLoader)
+            if (metaResult != null) {
+                log.debug("  found via meta-annotation ${ann.annotationClass.java.name}: $metaResult")
+                return metaResult
+            }
+        }
+
+        log.debug("  annotation not found")
+        return null
+    }
+
+    /**
+     * Looks for a target annotation on a meta-annotation and resolves @AliasFor attributes.
+     */
+    private fun findMergedAnnotationWithAliasFor(
+        sourceAnnotation: Annotation,
+        targetAnnotationName: String,
+        classLoader: ClassLoader?
+    ): AnnotationValues? {
+        val sourceAnnClass = sourceAnnotation.annotationClass.java
+
+        // Check if the source annotation's class has the target annotation as a meta-annotation
+        val metaAnn = sourceAnnClass.annotations.firstOrNull { it.annotationClass.java.name == targetAnnotationName }
+            ?: return null
+
+        log.debug("    found meta-annotation $targetAnnotationName on ${sourceAnnClass.name}")
+
+        // Start with the meta-annotation's default values
+        val mergedValues = mutableMapOf<String, AnnotationValue>()
+        for (method in metaAnn.annotationClass.java.methods) {
+            if (method.parameterCount == 0 && method.declaringClass != Any::class.java) {
+                try {
+                    val value = method.invoke(metaAnn)
+                    mergedValues[method.name] = convertToAnnotationValue(value)
+                } catch (_: Exception) {}
+            }
+        }
+
+        // Now look for @AliasFor on the source annotation's methods and override values
+        val aliasForName = "org.springframework.core.annotation.AliasFor"
+        for (method in sourceAnnClass.methods) {
+            if (method.parameterCount == 0 && method.declaringClass != Any::class.java) {
+                // Check if this method has @AliasFor pointing to our target annotation
+                val aliasFor = method.annotations.firstOrNull { it.annotationClass.java.name == aliasForName }
+                if (aliasFor != null) {
+                    try {
+                        val aliasAnnotation = aliasFor.annotationClass.java.getMethod("annotation").invoke(aliasFor) as? Class<*>
+                        val aliasAttribute = aliasFor.annotationClass.java.getMethod("attribute").invoke(aliasFor) as? String
+
+                        log.debug("    found @AliasFor on ${method.name}: annotation=${aliasAnnotation?.name}, attribute=$aliasAttribute")
+
+                        if (aliasAnnotation?.name == targetAnnotationName && !aliasAttribute.isNullOrEmpty()) {
+                            // Get the value from the source annotation
+                            val sourceValue = method.invoke(sourceAnnotation)
+                            log.debug("    aliased value for $aliasAttribute: $sourceValue")
+                            mergedValues[aliasAttribute] = convertToAnnotationValue(sourceValue)
+                        }
+                    } catch (e: Exception) {
+                        log.debug("    failed to process @AliasFor: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        log.debug("    merged values: $mergedValues")
+        return AnnotationValues(targetAnnotationName, mergedValues)
+    }
+
+    private fun convertToAnnotationValue(value: Any?): AnnotationValue {
+        return when (value) {
+            null -> AnnotationValue.StringValue("")
+            is String -> AnnotationValue.StringValue(value)
+            is Boolean -> AnnotationValue.BooleanValue(value)
+            is Number -> AnnotationValue.StringValue(value.toString())
+            is Enum<*> -> AnnotationValue.EnumValue(value.name)
+            is Class<*> -> AnnotationValue.ClassValue(value.name)
+            is Array<*> -> AnnotationValue.ArrayValue(value.map { convertToAnnotationValue(it) })
+            is Annotation -> AnnotationValue.NestedAnnotation(extractValuesFromReflection(value))
+            else -> AnnotationValue.StringValue(value.toString())
+        }
     }
 
     /**
