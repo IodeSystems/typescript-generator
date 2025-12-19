@@ -265,12 +265,33 @@ object AnnotationUtils {
     // ========== Java reflection-based lookups (uses Spring merged annotations for @AliasFor support) ==========
 
     /**
+     * Loads an annotation class from the target's classloader to handle classloader isolation.
+     * This is critical for Gradle plugin context where the plugin and project have different classloaders.
+     */
+    private fun loadAnnotationClass(targetClassLoader: ClassLoader?, annotationClass: KClass<out Annotation>): Class<out Annotation>? {
+        return loadAnnotationClass(targetClassLoader, annotationClass.java.name)
+    }
+
+    private fun loadAnnotationClass(targetClassLoader: ClassLoader?, annotationClassName: String): Class<out Annotation>? {
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            targetClassLoader?.loadClass(annotationClassName) as? Class<out Annotation>
+                ?: Class.forName(annotationClassName) as? Class<out Annotation>
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Get annotation from Java Class by annotation class.
      * Uses Spring's merged annotation support to resolve @AliasFor meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun getAnnotation(clazz: Class<*>?, annotationClass: KClass<out Annotation>): AnnotationValues? {
         if (clazz == null) return null
-        val ann = AnnotatedElementUtils.findMergedAnnotation(clazz, annotationClass.java) ?: return null
+        // Load annotation class from target's classloader to handle Gradle plugin classloader isolation
+        val annClass = loadAnnotationClass(clazz.classLoader, annotationClass) ?: return null
+        val ann = AnnotatedElementUtils.findMergedAnnotation(clazz, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
 
@@ -280,18 +301,13 @@ object AnnotationUtils {
      */
     fun getAnnotation(clazz: Class<*>?, annotationClassName: String): AnnotationValues? {
         if (clazz == null) return null
-        // For string-based lookup, we need to load the annotation class to use Spring's support
-        val annClass = try {
-            @Suppress("UNCHECKED_CAST")
-            clazz.classLoader?.loadClass(annotationClassName) as? Class<out Annotation>
-                ?: Class.forName(annotationClassName) as? Class<out Annotation>
-        } catch (_: Exception) {
+        val annClass = loadAnnotationClass(clazz.classLoader, annotationClassName)
+        if (annClass == null) {
             // Fallback to direct lookup if annotation class can't be loaded
             val ann = clazz.annotations.firstOrNull { it.annotationClass.java.name == annotationClassName }
                 ?: return null
             return extractValuesFromReflection(ann)
         }
-        if (annClass == null) return null
         val ann = AnnotatedElementUtils.findMergedAnnotation(clazz, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
@@ -299,10 +315,12 @@ object AnnotationUtils {
     /**
      * Get annotation from Java Method by annotation class.
      * Uses Spring's merged annotation support to resolve @AliasFor meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun getAnnotation(method: java.lang.reflect.Method?, annotationClass: KClass<out Annotation>): AnnotationValues? {
         if (method == null) return null
-        val ann = AnnotatedElementUtils.findMergedAnnotation(method, annotationClass.java) ?: return null
+        val annClass = loadAnnotationClass(method.declaringClass.classLoader, annotationClass) ?: return null
+        val ann = AnnotatedElementUtils.findMergedAnnotation(method, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
 
@@ -312,18 +330,13 @@ object AnnotationUtils {
      */
     fun getAnnotation(method: java.lang.reflect.Method?, annotationClassName: String): AnnotationValues? {
         if (method == null) return null
-        // For string-based lookup, we need to load the annotation class to use Spring's support
-        val annClass = try {
-            @Suppress("UNCHECKED_CAST")
-            method.declaringClass.classLoader?.loadClass(annotationClassName) as? Class<out Annotation>
-                ?: Class.forName(annotationClassName) as? Class<out Annotation>
-        } catch (_: Exception) {
+        val annClass = loadAnnotationClass(method.declaringClass.classLoader, annotationClassName)
+        if (annClass == null) {
             // Fallback to direct lookup if annotation class can't be loaded
             val ann = method.annotations.firstOrNull { it.annotationClass.java.name == annotationClassName }
                 ?: return null
             return extractValuesFromReflection(ann)
         }
-        if (annClass == null) return null
         val ann = AnnotatedElementUtils.findMergedAnnotation(method, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
@@ -331,10 +344,12 @@ object AnnotationUtils {
     /**
      * Get annotation from Java Field by annotation class.
      * Uses Spring's merged annotation support to resolve @AliasFor meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun getAnnotation(field: java.lang.reflect.Field?, annotationClass: KClass<out Annotation>): AnnotationValues? {
         if (field == null) return null
-        val ann = AnnotatedElementUtils.findMergedAnnotation(field, annotationClass.java) ?: return null
+        val annClass = loadAnnotationClass(field.declaringClass.classLoader, annotationClass) ?: return null
+        val ann = AnnotatedElementUtils.findMergedAnnotation(field, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
 
@@ -344,18 +359,13 @@ object AnnotationUtils {
      */
     fun getAnnotation(field: java.lang.reflect.Field?, annotationClassName: String): AnnotationValues? {
         if (field == null) return null
-        // For string-based lookup, we need to load the annotation class to use Spring's support
-        val annClass = try {
-            @Suppress("UNCHECKED_CAST")
-            field.declaringClass.classLoader?.loadClass(annotationClassName) as? Class<out Annotation>
-                ?: Class.forName(annotationClassName) as? Class<out Annotation>
-        } catch (_: Exception) {
+        val annClass = loadAnnotationClass(field.declaringClass.classLoader, annotationClassName)
+        if (annClass == null) {
             // Fallback to direct lookup if annotation class can't be loaded
             val ann = field.annotations.firstOrNull { it.annotationClass.java.name == annotationClassName }
                 ?: return null
             return extractValuesFromReflection(ann)
         }
-        if (annClass == null) return null
         val ann = AnnotatedElementUtils.findMergedAnnotation(field, annClass) ?: return null
         return extractValuesFromReflection(ann)
     }
@@ -363,43 +373,51 @@ object AnnotationUtils {
     /**
      * Check if Java Class has annotation.
      * Uses Spring's merged annotation support to find annotations via meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun hasAnnotation(clazz: Class<*>?, annotationClass: KClass<out Annotation>): Boolean {
         if (clazz == null) return false
-        return AnnotatedElementUtils.findMergedAnnotation(clazz, annotationClass.java) != null
+        val annClass = loadAnnotationClass(clazz.classLoader, annotationClass) ?: return false
+        return AnnotatedElementUtils.findMergedAnnotation(clazz, annClass) != null
     }
 
     /**
      * Check if Java Class has annotation DIRECTLY (not inherited from superclass/interface).
      * Uses Spring's merged annotation support for @AliasFor but does not follow type hierarchy.
      * Use this when you need to distinguish between direct and inherited annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun hasDirectAnnotation(clazz: Class<*>?, annotationClass: KClass<out Annotation>): Boolean {
         if (clazz == null) return false
+        val targetAnnClass = loadAnnotationClass(clazz.classLoader, annotationClass) ?: return false
         // Check annotations directly declared on this class (not inherited)
         return clazz.declaredAnnotations.any { ann ->
             // Check for direct match or meta-annotation via Spring's support
-            ann.annotationClass.java == annotationClass.java ||
-                AnnotatedElementUtils.findMergedAnnotation(ann.annotationClass.java, annotationClass.java) != null
+            ann.annotationClass.java.name == targetAnnClass.name ||
+                AnnotatedElementUtils.findMergedAnnotation(ann.annotationClass.java, targetAnnClass) != null
         }
     }
 
     /**
      * Check if Java Method has annotation.
      * Uses Spring's merged annotation support to find annotations via meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun hasAnnotation(method: java.lang.reflect.Method?, annotationClass: KClass<out Annotation>): Boolean {
         if (method == null) return false
-        return AnnotatedElementUtils.findMergedAnnotation(method, annotationClass.java) != null
+        val annClass = loadAnnotationClass(method.declaringClass.classLoader, annotationClass) ?: return false
+        return AnnotatedElementUtils.findMergedAnnotation(method, annClass) != null
     }
 
     /**
      * Check if Java Field has annotation.
      * Uses Spring's merged annotation support to find annotations via meta-annotations.
+     * Handles classloader isolation by loading the annotation class from the target's classloader.
      */
     fun hasAnnotation(field: java.lang.reflect.Field?, annotationClass: KClass<out Annotation>): Boolean {
         if (field == null) return false
-        return AnnotatedElementUtils.findMergedAnnotation(field, annotationClass.java) != null
+        val annClass = loadAnnotationClass(field.declaringClass.classLoader, annotationClass) ?: return false
+        return AnnotatedElementUtils.findMergedAnnotation(field, annClass) != null
     }
 
     /**

@@ -44,7 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Enum caching**: Enums are now properly cached to avoid duplicate processing.
 
-- **Gradle classloader isolation**: Annotation lookup now uses name-based comparison to handle classloader isolation issues in Gradle plugin context.
+- **Gradle classloader isolation**: Annotation lookup now loads annotation classes from the target's classloader, properly handling Gradle plugin classloader isolation. This ensures `@AliasFor` meta-annotations work correctly when the generator runs as a Gradle plugin.
+
+- **Annotation classes excluded from API generation**: Annotation classes that are meta-annotated with `@RestController` (like `@ApiController`) are now excluded from API generation.
 
 ### Changed
 
