@@ -126,9 +126,15 @@ class JacksonJsonAdapter : JsonAdapter {
         scan: ScanResult,
         clazz: Class<*>,
     ): ResolvedDiscriminatedSubTypes? {
-        // Use AnnotationUtils for classloader-safe annotation lookup
-        val classInfo = scan.getClassInfo(clazz.name)
-        val jsonTypeInfoAnn = AnnotationUtils.getAnnotation(classInfo, clazz, JsonTypeInfo::class)
+        // Only treat a class as a union root if it DIRECTLY has @JsonTypeInfo
+        // (or a meta-annotation aliasing it like @JsonUnion).
+        // Inherited @JsonTypeInfo (e.g., Ref.Loc inheriting from Ref) should not
+        // cause a new union to be created - such classes are union MEMBERS, not roots.
+        if (!AnnotationUtils.hasDirectAnnotation(clazz, JsonTypeInfo::class)) {
+            return null
+        }
+        // Now get the annotation values (can use merged since we know it's directly present)
+        val jsonTypeInfoAnn = AnnotationUtils.getAnnotation(clazz, JsonTypeInfo::class)
             ?: return null
 
         val id = jsonTypeInfoAnn.getString("use") ?: "CLASS"
@@ -256,10 +262,13 @@ class JacksonJsonAdapter : JsonAdapter {
         fun shouldSkipClass(clazz: Class<*>): Boolean {
             // Check if this class also implements another @JsonTypeInfo sealed type
             // that is not our root class. If so, skip it - it belongs to that other hierarchy.
+            // Use hasDirectAnnotation to check only DIRECT annotations on the super type,
+            // not annotations inherited through the type hierarchy (which would incorrectly
+            // filter out classes like Ref.Bu when checking Ref.Org -> Ref).
             val superTypes = clazz.interfaces.toList() + listOfNotNull(clazz.superclass)
             return superTypes
                 .filter { superType -> superType != rootClass && superType != Any::class.java && superType != Object::class.java }
-                .any { superType -> AnnotationUtils.hasAnnotation(superType, JsonTypeInfo::class) }
+                .any { superType -> AnnotationUtils.hasDirectAnnotation(superType, JsonTypeInfo::class) }
         }
 
         fun findReflectionSubclasses(parentClass: Class<*>): List<Class<*>> {
