@@ -6,6 +6,6 @@ spring-boot = "3.5.8"
 gradle-kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 gradle-node-plugin = "com.github.node-gradle.node:com.github.node-gradle.node.gradle.plugin:7.1.0"
 gradle-spring-boot-plugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
-gradle-typescript-generator = "com.iodesystems.typescript-generator:com.iodesystems.typescript-generator.gradle.plugin:0.0.17"
+gradle-typescript-generator = "com.iodesystems.typescript-generator:com.iodesystems.typescript-generator.gradle.plugin:0.0.18-SNAPSHOT"
 logback = "ch.qos.logback:logback-classic:1.5.21"
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "spring-boot" }
