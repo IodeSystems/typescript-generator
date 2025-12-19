@@ -9,6 +9,7 @@ import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
+import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.web.bind.annotation.*
 
 class SpringApiExtractor(
@@ -28,16 +29,32 @@ class SpringApiExtractor(
     }
 
     override fun extract(scan: ScanResult): ApiRegistry {
-        val controllers: List<ClassInfo> = scan.getClassesWithAnnotation(RestController::class.java)
-            .filter { AnnotationUtils.hasAnnotation(it, RequestMapping::class) }
+        // Use ClassGraph to find @RestController classes (handles meta-annotations)
+        // Then load the class and use Spring's AnnotatedElementUtils for proper @AliasFor resolution
+        val controllers: List<Pair<ClassInfo, Class<*>>> = scan.getClassesWithAnnotation(RestController::class.java)
             .filter { ci -> config.includeApi(ci.name) }
+            .mapNotNull { ci ->
+                val clazz = try {
+                    ci.loadClass()
+                } catch (e: Exception) {
+                    log.warn("Failed to load class ${ci.name}: ${e.message}")
+                    return@mapNotNull null
+                }
+                // Check for @RequestMapping using Spring's merged annotation support (handles @AliasFor)
+                val hasRequestMapping = AnnotatedElementUtils.findMergedAnnotation(clazz, RequestMapping::class.java) != null
+                if (hasRequestMapping) ci to clazz else null
+            }
 
         // Warn once if it seems parameter names were not compiled with -parameters
         var warnedMissingParameters = false
 
         return ApiRegistry.build {
-            controllers.forEach { controllerInfo ->
-                val basePath = annotationPath(AnnotationUtils.getAnnotation(controllerInfo, RequestMapping::class))
+            controllers.forEach { (controllerInfo, clazz) ->
+                // Use Spring's merged annotation to properly resolve @AliasFor attributes
+                val requestMapping = AnnotatedElementUtils.findMergedAnnotation(clazz, RequestMapping::class.java)
+                val basePath = requestMapping?.path?.firstOrNull()
+                    ?: requestMapping?.value?.firstOrNull()
+                    ?: ""
                 api(controllerInfo.name) {
                     if (basePath.isNotBlank()) basePath(basePath)
 

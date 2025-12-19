@@ -188,4 +188,36 @@ class ExternalClassPathTest {
             "ApiResult variants should have requestId field"
         )
     }
+
+    @Test
+    fun `meta-annotation with AliasFor resolves path correctly from external jar`() {
+        val externalJars = getExternalClasspath()
+
+        val output = TypeScriptGenerator.build {
+            classPathUrls { externalJars }
+            // Include the controller that uses @ApiController meta-annotation from external jar
+            packageAccept("com.external.core.api.AppointmentController")
+        }.generate()
+
+        val ts = output.ts()
+        println("Generated TypeScript for AppointmentController:\n$ts")
+
+        // Verify the API class is generated
+        assertTrue(
+            ts.contains("export class AppointmentController"),
+            "AppointmentController API should be generated"
+        )
+
+        // Verify the base path from @ApiController is resolved via @AliasFor
+        assertTrue(
+            ts.contains("\"/api/appointments\"") || ts.contains("'/api/appointments'"),
+            "Base path /api/appointments should be resolved from @ApiController meta-annotation"
+        )
+
+        // Verify the cancel endpoint has the combined path
+        assertTrue(
+            ts.contains("\"/api/appointments/cancel\"") || ts.contains("'/api/appointments/cancel'"),
+            "Cancel endpoint should have combined path /api/appointments/cancel"
+        )
+    }
 }
