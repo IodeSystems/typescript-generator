@@ -1,7 +1,7 @@
 [versions]
 kotlin = "2.2.21"
 org-jetbrains-dokka = "2.1.0"
-org-ow2-asm = "9.9"
+org-ow2-asm = "9.9.1"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "org-ow2-asm" }
