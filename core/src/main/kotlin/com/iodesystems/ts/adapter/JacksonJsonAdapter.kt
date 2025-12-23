@@ -148,6 +148,16 @@ class JacksonJsonAdapter : JsonAdapter {
             }
         }
 
+        // Check for explicit @JsonSubTypes annotation first
+        val classInfo = scan.getClassInfo(clazz.name)
+        val jsonSubTypesAnn = AnnotationUtils.getAnnotation(classInfo, clazz, JsonSubTypes::class)
+        if (jsonSubTypesAnn != null) {
+            val options = extractJsonSubTypesOptions(scan, jsonSubTypesAnn, id)
+            if (options.isNotEmpty()) {
+                return ResolvedDiscriminatedSubTypes(discriminatorProperty, options)
+            }
+        }
+
         // For sealed classes/interfaces, find all subtypes within the sealed hierarchy.
         // We need to recursively traverse permittedSubclasses because nested classes may
         // extend each other (e.g., Ref.Bu extends Ref.Org, not Ref directly).
@@ -177,6 +187,67 @@ class JacksonJsonAdapter : JsonAdapter {
             JsonAdapter.SubtypeOption(implClass, discValue)
         }
         return ResolvedDiscriminatedSubTypes(discriminatorProperty, options)
+    }
+
+    /**
+     * Extracts subtype options from @JsonSubTypes annotation.
+     */
+    private fun extractJsonSubTypesOptions(
+        scan: ScanResult,
+        jsonSubTypesAnn: AnnotationUtils.AnnotationValues,
+        jsonTypeInfoId: String
+    ): List<JsonAdapter.SubtypeOption> {
+        // Get the array of @JsonSubTypes.Type annotations from the "value" parameter
+        val valueParam = jsonSubTypesAnn["value"] ?: return emptyList()
+        val typeAnnotations = when (valueParam) {
+            is AnnotationUtils.AnnotationValue.ArrayValue -> valueParam.values
+            else -> return emptyList()
+        }
+
+        return typeAnnotations.mapNotNull { typeAnnValue ->
+            // Each element should be a NestedAnnotation containing @JsonSubTypes.Type
+            val typeAnn = when (typeAnnValue) {
+                is AnnotationUtils.AnnotationValue.NestedAnnotation -> typeAnnValue.annotation
+                else -> return@mapNotNull null
+            }
+
+            // Get the class from the "value" parameter
+            val classValue = typeAnn["value"] ?: return@mapNotNull null
+            val className = when (classValue) {
+                is AnnotationUtils.AnnotationValue.ClassValue -> classValue.className
+                else -> return@mapNotNull null
+            }
+
+            // Load the class
+            val implClass = try {
+                scan.getClassInfo(className)?.loadClass() ?: Class.forName(className)
+            } catch (e: Exception) {
+                // If we can't load the class, skip it
+                return@mapNotNull null
+            }
+
+            // Get the name from the "name" parameter (used as discriminator value)
+            val explicitName = typeAnn.getString("name")
+
+            // Determine the discriminator value based on JsonTypeInfo.Id type
+            val discValue = when {
+                // If explicit name is provided and not blank, use it for NAME type
+                !explicitName.isNullOrBlank() && jsonTypeInfoId == "NAME" -> explicitName
+                // For CLASS type, use the full class name
+                jsonTypeInfoId == "CLASS" -> implClass.name
+                // For SIMPLE_NAME type, use the simple class name
+                jsonTypeInfoId == "SIMPLE_NAME" -> implClass.simpleName
+                // For NAME type without explicit name, check @JsonTypeName or fall back to simple name
+                jsonTypeInfoId == "NAME" -> {
+                    val implClassInfo = scan.getClassInfo(implClass.name)
+                    val jtnAnn = AnnotationUtils.getAnnotation(implClassInfo, implClass, JsonTypeName::class)
+                    jtnAnn?.getString("value")?.takeIf { it.isNotBlank() } ?: implClass.simpleName
+                }
+                else -> error("Unsupported JsonTypeInfo.Id type: $jsonTypeInfoId")
+            }
+
+            JsonAdapter.SubtypeOption(implClass, discValue)
+        }
     }
 
     override fun chooseJsonConstructor(ci: ClassInfo, scan: ScanResult): MethodInfo? {
