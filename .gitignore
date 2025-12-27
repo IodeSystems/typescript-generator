@@ -19,3 +19,4 @@ samples/spring/buildSrc/build
 samples/spring/node_modules
 ./todo
 ./done
+.claude/settings.local.json
