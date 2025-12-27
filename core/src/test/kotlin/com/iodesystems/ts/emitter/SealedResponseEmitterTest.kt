@@ -52,11 +52,11 @@ class SealedResponseEmitterTest {
 
         // Ensure method signatures use distinct union types per method
         result.assertContains(
-            "add(req: SealedResponseEmitterTestSampleApiAdd): Promise<SealedResponseEmitterTestSampleApiAddResponseUnion>",
+            "add(req: SealedResponseEmitterTestSampleApiAdd): AbortablePromise<SealedResponseEmitterTestSampleApiAddResponseUnion>",
             "'add' should return its own response union type"
         )
         result.assertContains(
-            "ping(req: SealedResponseEmitterTestSampleApiPing): Promise<SealedResponseEmitterTestSampleApiPingResponseUnion>",
+            "ping(req: SealedResponseEmitterTestSampleApiPing): AbortablePromise<SealedResponseEmitterTestSampleApiPingResponseUnion>",
             "'ping' should return its own response union type"
         )
 

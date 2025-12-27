@@ -5,6 +5,7 @@ import com.iodesystems.ts.Config
 import com.iodesystems.ts.adapter.ApiAdapter
 import com.iodesystems.ts.adapter.JsonAdapter
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
+import com.iodesystems.ts.extractor.extractors.ClassReference
 import com.iodesystems.ts.extractor.extractors.JvmMethod
 import com.iodesystems.ts.extractor.registry.ApiMethodDescriptor
 import com.iodesystems.ts.extractor.registry.ApiRegistry
@@ -30,9 +31,10 @@ data class JvmExtractor(
     val log = logger()
 
     fun ClassInfo.tsName(generics: Map<String, TsType.Inline> = emptyMap()): String {
-        val name = config.customNaming(name.stripPrefix(packageName))
-        if (generics.isEmpty()) return name
-        return "$name<${generics.values.joinToString(",") { it.name }}>"
+        val simpleName = name.stripPrefix(packageName)
+        val tsName = config.customNaming(name, simpleName)
+        if (generics.isEmpty()) return tsName
+        return "$tsName<${generics.values.joinToString(",") { it.name }}>"
     }
 
     fun forMethod(
@@ -109,6 +111,24 @@ data class JvmExtractor(
                 apiMethods = methods
             )
         }
+
+        // Process explicitly included types
+        val classRef = ClassReference(config, scan, typeCache, jsonAdapter)
+        config.includeTypes.forEach { fqcn ->
+            try {
+                val classInfo = scan.getClassInfo(fqcn)
+                if (classInfo == null) {
+                    log.warn("Could not find class info for explicitly included type: $fqcn")
+                } else {
+                    val clazz = classInfo.loadClass()
+                    val tsType = classRef.toTsType(clazz)
+                    ctx.registerType(tsType)
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to load explicitly included type: $fqcn", e)
+            }
+        }
+
         return Extraction(
             apis = apis,
             types = run {

@@ -29,7 +29,7 @@ class PrimitiveRequestTest {
         val content = em.ts().content()
         content.assertContains(
             fragment = """
-              |  nullResponse(req: string): Promise<boolean | null> {
+              |  nullResponse(req: string): AbortablePromise<boolean | null> {
               |    return fetchInternal(this.opts, "/", {
               |      method: "POST",
               |      headers: {'Content-Type': 'application/json'},
@@ -41,7 +41,7 @@ class PrimitiveRequestTest {
         )
         content.assertContains(
             fragment = """
-              |  nullRequest(req: string | null): Promise<boolean> {
+              |  nullRequest(req: string | null): AbortablePromise<boolean> {
               |    return fetchInternal(this.opts, "/", {
               |      method: "POST",
               |      headers: {'Content-Type': 'application/json'},

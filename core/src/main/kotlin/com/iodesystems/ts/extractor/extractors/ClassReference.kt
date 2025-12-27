@@ -203,7 +203,8 @@ class ClassReference(
         // Check for user-configured mapped types
         config.mappedTypes[fqcn]?.let { mappedValue ->
             // Create an alias type and register it if not already cached
-            val tsName = config.customNaming(fqcn.removePrefix(clazz.packageName.plus(".")))
+            val simpleName = fqcn.removePrefix(clazz.packageName.plus("."))
+            val tsName = config.customNaming(fqcn, simpleName)
             if (!typeCache.containsKey(fqcn)) {
                 typeCache[fqcn] = TsType.Alias(
                     fqcn = fqcn,
@@ -453,7 +454,8 @@ class ClassReference(
         }
 
         // Use the name after the package (includes outer class names)
-        val tsName = config.customNaming(fqcn.removePrefix(clazz.packageName.plus(".")))
+        val simpleName = fqcn.removePrefix(clazz.packageName.plus("."))
+        val tsName = config.customNaming(fqcn, simpleName)
 
         // Use jsonAdapter to get serialized values (e.g., @JsonValue support)
         val enumNames = clazz.enumConstants.map { (it as Enum<*>).name }
@@ -482,7 +484,8 @@ class ClassReference(
     ): TsType {
         val fqcn = clazz.name
         // Use the name after the package (includes outer class names) + "Union" suffix
-        val baseTsName = config.customNaming(fqcn.removePrefix(clazz.packageName.plus(".")))
+        val simpleName = fqcn.removePrefix(clazz.packageName.plus("."))
+        val baseTsName = config.customNaming(fqcn, simpleName)
         val interfaceTsName = if (clazz.typeParameters.isNotEmpty()) {
             "$baseTsName<${clazz.typeParameters.joinToString(",") { it.name }}>"
         } else {
@@ -551,7 +554,8 @@ class ClassReference(
         val children = discriminatedSubTypes.options.map { option ->
             val childClass = option.shim
             val childFqcn = childClass.name
-            val childBaseName = config.customNaming(childFqcn.removePrefix(childClass.packageName.plus(".")))
+            val childSimpleName = childFqcn.removePrefix(childClass.packageName.plus("."))
+            val childBaseName = config.customNaming(childFqcn, childSimpleName)
 
             // Extract the child type as an Object with discriminator field
             val childFields = mutableMapOf<String, TsField>()
@@ -697,7 +701,8 @@ class ClassReference(
     ): TsType {
         val fqcn = clazz.name
         // Use the name after the package (includes outer class names)
-        val tsName = config.customNaming(fqcn.removePrefix(clazz.packageName.plus(".")))
+        val simpleName = fqcn.removePrefix(clazz.packageName.plus("."))
+        val tsName = config.customNaming(fqcn, simpleName)
 
         // Check cache to avoid infinite recursion
         val cacheKey = fqcn

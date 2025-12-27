@@ -29,7 +29,7 @@ class PathVariableTest {
         val content = em.ts().content()
         content.assertContains(
             fragment = """
-              |  get(path: { id: string }): Promise<string> {
+              |  get(path: { id: string }): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/p/user/{id}".replace("{id}", String(path.id)), {
               |      method: "GET"
               |    }).then(r=>r.json())
@@ -39,7 +39,7 @@ class PathVariableTest {
         )
         content.assertContains(
             fragment = """
-              |  both(path: { userId: string | number, postId: string | number }, query: PathVarControllerBothQuery): Promise<string> {
+              |  both(path: { userId: string | number, postId: string | number }, query: PathVarControllerBothQuery): AbortablePromise<string> {
               |    return fetchInternal(this.opts, flattenQueryParams("/p/user/{id}/posts/{postId}".replace("{id}", String(path.userId)).replace("{postId}", String(path.postId)), query, null), {
               |      method: "GET"
               |    }).then(r=>r.json())

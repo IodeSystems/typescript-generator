@@ -40,7 +40,7 @@ class PolymorphicTest {
         // API method block
         content.assertContains(
             fragment = """
-            post(req: PolyContainer<string>): Promise<PolyResponse> {
+            post(req: PolyContainer<string>): AbortablePromise<PolyResponse> {
         """.trimIndent(),
             why = "POST method should accept PolyContainer<string> and return PolyResponse"
         )

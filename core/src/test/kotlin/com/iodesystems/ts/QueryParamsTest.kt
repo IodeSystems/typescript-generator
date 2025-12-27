@@ -50,7 +50,7 @@ class QueryParamsTest {
         )
         content.assertContains(
             fragment = """
-               |  list(query: QueryParamsControllerListQuery): Promise<string> {
+               |  list(query: QueryParamsControllerListQuery): AbortablePromise<string> {
                |    return fetchInternal(this.opts, flattenQueryParams("/q", query, null), {
                |      method: "GET"
                |    }).then(r=>r.json())
@@ -60,7 +60,7 @@ class QueryParamsTest {
         )
 
         content.assertContains("""
-            |  withPath(path: { path: string, param: string | number }, query: QueryParamsControllerWithPathQuery): Promise<string> {
+            |  withPath(path: { path: string, param: string | number }, query: QueryParamsControllerWithPathQuery): AbortablePromise<string> {
             |    return fetchInternal(this.opts, flattenQueryParams("/q/with/{path}/{param}".replace("{path}", String(path.path)).replace("{param}", String(path.param)), query, null), {
             |      method: "GET"
             |    }).then(r=>r.json())

@@ -51,7 +51,7 @@ class EmitterTest {
         val result = emitter.ts().content()
         result.assertContains(
             """
-            |  withRequest(req: boolean): Promise<void> {
+            |  withRequest(req: boolean): AbortablePromise<void> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
@@ -63,7 +63,7 @@ class EmitterTest {
 
         result.assertContains(
             """
-            |  withResponse(): Promise<boolean> {
+            |  withResponse(): AbortablePromise<boolean> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "GET"
             |    }).then(r=>r.json())
@@ -72,7 +72,7 @@ class EmitterTest {
         )
         result.assertContains(
             """
-            |  withRequestAndResponse(req: boolean): Promise<boolean> {
+            |  withRequestAndResponse(req: boolean): AbortablePromise<boolean> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
@@ -116,7 +116,7 @@ class EmitterTest {
             "ByteString alias should exist"
         )
         result.assertContains(
-            "get(): Promise<EmitterTestJsonCreatorAliasTypesByteString> {",
+            "get(): AbortablePromise<EmitterTestJsonCreatorAliasTypesByteString> {",
             "ByteString function parameter should exist"
         )
     }
@@ -157,7 +157,7 @@ class EmitterTest {
         )
         result.assertContains(
             """
-            |  withRequest(req: EmitterTestSimpleTypeFoo): Promise<void> {
+            |  withRequest(req: EmitterTestSimpleTypeFoo): AbortablePromise<void> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
@@ -169,7 +169,7 @@ class EmitterTest {
 
         result.assertContains(
             """
-            |  withResponse(): Promise<EmitterTestSimpleTypeFoo> {
+            |  withResponse(): AbortablePromise<EmitterTestSimpleTypeFoo> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "GET"
             |    }).then(r=>r.json())
@@ -178,7 +178,7 @@ class EmitterTest {
         )
         result.assertContains(
             """
-            |  withRequestAndResponse(req: EmitterTestSimpleTypeFoo): Promise<EmitterTestSimpleTypeFoo> {
+            |  withRequestAndResponse(req: EmitterTestSimpleTypeFoo): AbortablePromise<EmitterTestSimpleTypeFoo> {
             |    return fetchInternal(this.opts, "/", {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
@@ -259,17 +259,17 @@ class EmitterTest {
         val emitter = emitter(KitchenSink::class)
         val result = emitter.ts().content()
         result.assertContains(
-            "post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnionUnion> {",
+            "post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): AbortablePromise<EmitterTestKitchenSinkUnionUnion> {",
             "generics should be resolved here"
         )
         result.assertContains(
-            "get(): Promise<Array<EmitterTestKitchenSinkGetResponse | null>> {",
+            "get(): AbortablePromise<Array<EmitterTestKitchenSinkGetResponse | null>> {",
             "generics should be resolved here"
         )
 
         // Path parameter handling
         result.assertContains(
-            "path(path: { id: string | number }): Promise<void> {",
+            "path(path: { id: string | number }): AbortablePromise<void> {",
             "should generate a path param object with string | number for numeric id"
         )
         result.assertContains(
@@ -279,7 +279,7 @@ class EmitterTest {
 
         // Query parameter handling + flattenQueryParams usage
         result.assertContains(
-            "search(query: EmitterTestKitchenSinkSearchQuery): Promise<Array<number>> {",
+            "search(query: EmitterTestKitchenSinkSearchQuery): AbortablePromise<Array<number>> {",
             "should generate named query type and return array of numbers"
         )
         result.assertContains(
@@ -289,7 +289,7 @@ class EmitterTest {
 
         // Optional/nullable request body handling (nullable body still serializes with headers)
         result.assertContains(
-            "optional(req: EmitterTestKitchenSinkOther | null): Promise<void> {",
+            "optional(req: EmitterTestKitchenSinkOther | null): AbortablePromise<void> {",
             "nullable body type should be reflected in signature"
         )
         result.assertContains(

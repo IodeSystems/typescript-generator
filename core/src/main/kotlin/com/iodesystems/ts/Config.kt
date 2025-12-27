@@ -39,6 +39,11 @@ data class Config(
         // Optional
         java.util.Optional::class.qualifiedName!! to "T | null"
     ),
+    // Map of FQCN -> explicit TypeScript type name (bypasses typeNameReplacements)
+    // This is for naming, not for type mapping. Use with mappedTypes to create type aliases.
+    // Example: "com.yubico.webauthn.data.ByteArray" -> "Bytes"
+    // Combined with mappedTypes: export type Bytes = string
+    val alias: Map<String, String> = emptyMap(),
     val outputDirectory: String = "./",
     // Fully-qualified annotation class names that should mark a field/param/getter as optional
     // (in addition to library-specific or Kotlin-default rules). Defaults include common nullable
@@ -83,6 +88,8 @@ data class Config(
     // Enables extra diagnostic logs from heavy phases (type registration, queue sizes, memory snapshots).
     // Keep default false to avoid overhead in normal runs.
     val diagnosticLogging: Boolean = false,
+    // Fully-qualified class names to explicitly include as types (even if not referenced by API methods).
+    val includeTypes: List<String> = emptyList(),
     // Jackson naming behavior options (mirrors MapperFeature settings)
     // AUTO_DETECT_IS_GETTERS: When true, boolean isX() getters are detected and "is" prefix is stripped.
     // E.g., isActive() -> "active" in JSON. Default true (matches Jackson default).
@@ -104,6 +111,7 @@ data class Config(
                 if (cleanOutputDir) "cleanOutputDir=$cleanOutputDir" else null,
                 if (classPathUrls.isNotEmpty()) "classPathUrls=$classPathUrls" else null,
                 if (mappedTypes.isNotEmpty()) "mappedTypes=$mappedTypes" else null,
+                if (alias.isNotEmpty()) "alias=$alias" else null,
                 if (outputDirectory != "./") "outputDirectory='$outputDirectory'" else null,
                 if (optionalAnnotations.isNotEmpty()) "optionalAnnotations=$optionalAnnotations" else null,
                 if (nullableAnnotations.isNotEmpty()) "nullableAnnotations=$nullableAnnotations" else null,
@@ -115,7 +123,8 @@ data class Config(
                 typesFileName?.let { "typesFileName='$it'" },
                 if (externalImportLines.isNotEmpty()) "externalImportLines=$externalImportLines" else null,
                 if (headerLines.isNotEmpty()) "headerLines=$headerLines" else null,
-                if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null
+                if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null,
+                if (includeTypes.isNotEmpty()) "includeTypes=$includeTypes" else null
             )
             append(props.joinToString(", "))
             append(")")
@@ -161,8 +170,21 @@ data class Config(
         return !excluded
     }
 
-    fun customNaming(cls: String): String {
-        var out = cls
+    /**
+     * Determines the TypeScript type name for a given fully-qualified class name.
+     * If the FQCN is in alias map, returns the explicit alias.
+     * Otherwise, applies typeNameReplacements regex patterns to the simple class name.
+     *
+     * @param fqcn The fully-qualified class name
+     * @param simpleName The simple class name (name without package). If not provided, extracts from fqcn.
+     */
+    fun customNaming(fqcn: String, simpleName: String? = null): String {
+        // Check for explicit alias first (bypasses replacements)
+        alias[fqcn]?.let { return it }
+
+        // Apply regex replacements to simple name
+        val name = simpleName ?: fqcn.substringAfterLast('.')
+        var out = name
         for ((pattern, repl) in typeNameReplacements) {
             out = out.replace(Regex(pattern), repl)
         }
@@ -228,6 +250,26 @@ data class Config(
             config = config.copy(mappedTypes = config.mappedTypes + (klass.java.name to tsIdentifier)); return this
         }
 
+        /** Set type name aliases: FQCN → TypeScript name (bypasses typeNameReplacements). */
+        fun alias(map: Map<String, String>): Builder {
+            config = config.copy(alias = map); return this
+        }
+
+        /** Add/override multiple type name aliases: FQCN → TypeScript name. */
+        fun addAlias(map: Map<String, String>): Builder {
+            config = config.copy(alias = config.alias + map); return this
+        }
+
+        /** Add a single type name alias: map FQCN to explicit TypeScript type name. */
+        fun alias(fqcn: String, tsName: String): Builder {
+            config = config.copy(alias = config.alias + (fqcn to tsName)); return this
+        }
+
+        /** Add a single type name alias using KClass: map class to explicit TypeScript type name. */
+        fun alias(klass: KClass<*>, tsName: String): Builder {
+            config = config.copy(alias = config.alias + (klass.java.name to tsName)); return this
+        }
+
         /** Accept packages for scanning (package prefixes or regex). */
         fun packageAccept(vararg patterns: String): Builder {
             config = config.copy(packageAccept = patterns.toList()); return this
@@ -242,6 +284,29 @@ data class Config(
         inline fun <reified T> includeApi(): Builder = includeApi(T::class)
         fun includeApi(vararg classes: KClass<*>): Builder {
             config = config.copy(packageAccept = config.packageAccept + classes.map { it.java.name })
+            return this
+        }
+
+        /** Explicitly include types by FQCN (even if not referenced by API methods). */
+        fun includeTypes(vararg fqns: String): Builder {
+            config = config.copy(includeTypes = fqns.toList()); return this
+        }
+
+        /** Explicitly include types by KClass (even if not referenced by API methods). */
+        inline fun <reified T> includeTypes(): Builder = includeTypes(T::class)
+        fun includeTypes(vararg classes: KClass<*>): Builder {
+            config = config.copy(includeTypes = classes.map { it.java.name })
+            return this
+        }
+
+        /** Add to explicitly included types. */
+        fun addIncludeTypes(vararg fqns: String): Builder {
+            config = config.copy(includeTypes = config.includeTypes + fqns.toList()); return this
+        }
+
+        /** Add to explicitly included types by KClass. */
+        fun addIncludeTypes(vararg classes: KClass<*>): Builder {
+            config = config.copy(includeTypes = config.includeTypes + classes.map { it.java.name })
             return this
         }
 

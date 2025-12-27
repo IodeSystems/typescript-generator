@@ -36,7 +36,7 @@ class HttpMethodsTest {
         // Only check each API method block (not every line independently)
         content.assertContains(
             fragment = """
-              |  get(): Promise<string> {
+              |  get(): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/verbs", {
               |      method: "GET"
               |    }).then(r=>r.json())
@@ -47,7 +47,7 @@ class HttpMethodsTest {
 
         content.assertContains(
             fragment = """
-              |  post(req: string): Promise<string> {
+              |  post(req: string): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/verbs", {
               |      method: "POST",
               |      headers: {'Content-Type': 'application/json'},
@@ -60,7 +60,7 @@ class HttpMethodsTest {
 
         content.assertContains(
             fragment = """
-              |  put(req: string): Promise<string> {
+              |  put(req: string): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/verbs", {
               |      method: "PUT",
               |      headers: {'Content-Type': 'application/json'},
@@ -73,7 +73,7 @@ class HttpMethodsTest {
 
         content.assertContains(
             fragment = """
-              |  patch(req: string): Promise<string> {
+              |  patch(req: string): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/verbs", {
               |      method: "PATCH",
               |      headers: {'Content-Type': 'application/json'},
@@ -86,7 +86,7 @@ class HttpMethodsTest {
 
         content.assertContains(
             fragment = """
-              |  delete(): Promise<string> {
+              |  delete(): AbortablePromise<string> {
               |    return fetchInternal(this.opts, "/verbs", {
               |      method: "DELETE"
               |    }).then(r=>r.json())

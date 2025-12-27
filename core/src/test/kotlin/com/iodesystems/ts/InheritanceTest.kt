@@ -107,7 +107,7 @@ class InheritanceTest {
         )
 
         ts.assertContains(
-            fragment = "getChild(): Promise<InheritanceApiChild> {",
+            fragment = "getChild(): AbortablePromise<InheritanceApiChild> {",
             why = "API should return the inherited type"
         )
     }
@@ -153,7 +153,7 @@ class InheritanceTest {
 
         ts.assertContains(
             fragment = """
-                  getAnimal(): Promise<InheritanceApiAnimalUnion> {
+                  getAnimal(): AbortablePromise<InheritanceApiAnimalUnion> {
             """.trimIndent(),
             why = "Method signature"
         )

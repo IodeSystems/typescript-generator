@@ -54,7 +54,7 @@ class IndirectRecursiveTypeTest {
             fragment = """
                 export class IndirectRecursiveApi {
                   constructor(private opts: ApiOptions = {}) {}
-                  get(): Promise<IndirectRecursiveApiA> {
+                  get(): AbortablePromise<IndirectRecursiveApiA> {
             """.trimIndent(),
             why = "API method should return A which indirectly references B"
         )

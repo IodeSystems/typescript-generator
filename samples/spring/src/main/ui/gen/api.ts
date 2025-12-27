@@ -1,9 +1,9 @@
 import type {Dayjs} from 'dayjs'
-import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
 import { EventApiCreate, EventApiCreateResponseUnion } from './api-types'
 export class EventApi {
   constructor(private opts: ApiOptions = {}) {}
-  create(req: EventApiCreate): Promise<EventApiCreateResponseUnion> {
+  create(req: EventApiCreate): AbortablePromise<EventApiCreateResponseUnion> {
     return fetchInternal(this.opts, "/api/orgs/events/create", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
@@ -11,30 +11,35 @@ export class EventApi {
     }).then(r=>r.json())
   }
 }
-import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiPing, SampleApiPingResponseUnion, SlugRefUnion } from './api-types'
+import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiIsPrefixTest, SampleApiPing, SampleApiPingResponseUnion, SlugRefUnion } from './api-types'
 export class SampleApi {
   constructor(private opts: ApiOptions = {}) {}
-  add(req: SampleApiAdd): Promise<SampleApiAddResponseUnion> {
+  add(req: SampleApiAdd): AbortablePromise<SampleApiAddResponseUnion> {
     return fetchInternal(this.opts, "/api/sample", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req)
     }).then(r=>r.json())
   }
-  ping(req: SampleApiPing): Promise<SampleApiPingResponseUnion> {
+  ping(req: SampleApiPing): AbortablePromise<SampleApiPingResponseUnion> {
     return fetchInternal(this.opts, "/api/sample/ping", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req)
     }).then(r=>r.json())
   }
-  getRef(): Promise<RefUnion> {
+  getRef(): AbortablePromise<RefUnion> {
     return fetchInternal(this.opts, "/api/sample/ref", {
       method: "GET"
     }).then(r=>r.json())
   }
-  getSlugRef(): Promise<SlugRefUnion> {
+  getSlugRef(): AbortablePromise<SlugRefUnion> {
     return fetchInternal(this.opts, "/api/sample/slug-ref", {
+      method: "GET"
+    }).then(r=>r.json())
+  }
+  getIsPrefixTest(): AbortablePromise<SampleApiIsPrefixTest> {
+    return fetchInternal(this.opts, "/api/sample/is-prefix-test", {
       method: "GET"
     }).then(r=>r.json())
   }

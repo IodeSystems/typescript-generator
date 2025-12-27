@@ -67,7 +67,7 @@ class JacksonTest {
         // get() method block
         content.assertContains(
             fragment = """
-              |  get(): Promise<JacksonApiPayload> {
+              |  get(): AbortablePromise<JacksonApiPayload> {
               |    return fetchInternal(this.opts, "/api/jackson/go", {
               |      method: "GET"
               |    }).then(r=>r.json())
@@ -96,7 +96,7 @@ class JacksonTest {
         // Post method should accept JacksonParam as request body and return it
         content.assertContains(
             fragment = """
-              |  post(req: JacksonParam): Promise<JacksonParam> {
+              |  post(req: JacksonParam): AbortablePromise<JacksonParam> {
               |    return fetchInternal(this.opts, "/api/jackson/param", {
               |      method: "POST",
               |      headers: {'Content-Type': 'application/json'},

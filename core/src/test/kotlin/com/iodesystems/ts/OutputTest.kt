@@ -141,7 +141,7 @@ class OutputTest {
             why = "api-lib.ts should contain library helpers"
         )
         sepApiTxt.assertContains(
-            fragment = "import { ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'",
+            fragment = "import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'",
             why = "api.ts should import from ./api-lib"
         )
         sepApiTxt.assertContains(

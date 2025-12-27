@@ -54,7 +54,7 @@ class EnumTest {
 
         // The method should return the payload type (loose matching to avoid indentation issues)
         out.assertContains(
-            fragment = "get(): Promise<EnumApiPayload>",
+            fragment = "get(): AbortablePromise<EnumApiPayload>",
             why = "Method signature should be present"
         )
         out.assertContains(

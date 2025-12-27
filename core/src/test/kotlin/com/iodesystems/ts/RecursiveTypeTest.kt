@@ -43,7 +43,7 @@ class RecursiveTypeTest {
             fragment = """
                 export class RecursiveTypesApi {
                   constructor(private opts: ApiOptions = {}) {}
-                  get(): Promise<RecursiveTypesApiNode> {
+                  get(): AbortablePromise<RecursiveTypesApiNode> {
             """.trimIndent(),
             why = "API method should return the recursive Node type"
         )

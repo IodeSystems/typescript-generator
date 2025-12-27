@@ -169,6 +169,19 @@ export type SampleApiAddResponseSuccess = SampleApiAddResponse & {
  */
 export type SampleApiAddResponseUnion = SampleApiAddResponse & (SampleApiAddResponseFailure | SampleApiAddResponseSuccess)
 /**
+ * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$IsPrefixTest}
+ * METHOD ref:
+ * - {@link SampleApi#getIsPrefixTest}
+ */
+export type SampleApiIsPrefixTest = {
+  active: boolean
+  enabled: boolean
+  nullable: boolean | null
+  optional: boolean | null
+  optionalNullable: boolean | null
+  url: boolean
+}
+/**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Ping}
  * METHOD ref:
  * - {@link SampleApi#ping}

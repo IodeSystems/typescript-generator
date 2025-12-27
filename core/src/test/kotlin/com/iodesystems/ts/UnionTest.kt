@@ -89,7 +89,7 @@ class UnionTest {
         )
         result.assertContains(
             """
-              post(req: UnionTestInheritanceModelUnion): Promise<void> {
+              post(req: UnionTestInheritanceModelUnion): AbortablePromise<void> {
         """.trimIndent(),
             "POST method should accept UnionTestInheritanceModelUnion"
         )
