@@ -32,11 +32,42 @@ class JacksonApi {
         val code: MyEnum,
     )
 
+    data class JacksonParam(
+        @field:JsonProperty(required = false)
+        val fOptional: String,
+
+        @field:JsonProperty(required = false)
+        val fOptionalNullable: String?
+    )
+
+    data class Session(
+        @field:JsonProperty(required = true)
+        val loading: Boolean = false
+    )
+
+    data class SessionWithParam(
+        @param:JsonProperty(required = true)
+        val loading: Boolean = false
+    )
+
+    data class SessionWithGet(
+        @get:JsonProperty(required = true)
+        val loading: Boolean = false
+    )
+
+    data class SessionBare(
+        @JsonProperty(required = true)
+        val loading: Boolean = false
+    )
+
     @RequestMapping("go")
     fun get(): Payload = error("not used in tests")
 
     @PostMapping("param")
     fun post(@RequestBody req: JacksonParam): JacksonParam = req
+
+    @PostMapping("session")
+    fun session(@RequestBody req: Session): Session = req
 }
 
 enum class MyEnum() {
@@ -85,9 +116,9 @@ class JacksonTest {
         // Type for JacksonParam should have optional fields derived from @JsonProperty(required=false)
         content.assertContains(
             fragment = """
-                export type JacksonParam = {
+                export type JacksonApiJacksonParam = {
                   fOptional?: string | undefined
-                  fOptionalNullable?: string | undefined
+                  fOptionalNullable?: string | null | undefined
                 }
             """.trimIndent(),
             why = "@JsonProperty(required=false) should mark fields as optional in TypeScript"
@@ -96,7 +127,7 @@ class JacksonTest {
         // Post method should accept JacksonParam as request body and return it
         content.assertContains(
             fragment = """
-              |  post(req: JacksonParam): AbortablePromise<JacksonParam> {
+              |  post(req: JacksonApiJacksonParam): AbortablePromise<JacksonApiJacksonParam> {
               |    return fetchInternal(this.opts, "/api/jackson/param", {
               |      method: "POST",
               |      headers: {'Content-Type': 'application/json'},
@@ -105,6 +136,36 @@ class JacksonTest {
               |  }
             """.trimMargin("|"),
             why = "POST should use JacksonParam with request body and return it"
+        )
+    }
+
+    @Test
+    fun verifiesJsonPropertyRequiredOverridesDefaultValue() {
+        val em = emitter(JacksonApi::class) { outputDirectory("./tmp") }
+        val content = em.ts().content()
+
+        // Session should have required field even though it has a Kotlin default value
+        content.assertContains(
+            fragment = """
+                export type JacksonApiSession = {
+                  loading: boolean
+                }
+            """.trimIndent(),
+            why = "@JsonProperty(required=true) should override Kotlin default value and make field required"
+        )
+
+        // Session method should accept Session as request body and return it
+        content.assertContains(
+            fragment = """
+              |  session(req: JacksonApiSession): AbortablePromise<JacksonApiSession> {
+              |    return fetchInternal(this.opts, "/api/jackson/session", {
+              |      method: "POST",
+              |      headers: {'Content-Type': 'application/json'},
+              |      body: JSON.stringify(req)
+              |    }).then(r=>r.json())
+              |  }
+            """.trimMargin("|"),
+            why = "POST should use Session with request body and return it"
         )
     }
 }

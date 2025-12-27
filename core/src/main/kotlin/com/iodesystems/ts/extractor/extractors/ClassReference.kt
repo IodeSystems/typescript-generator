@@ -134,25 +134,36 @@ class ClassReference(
                 name // Keep as-is (e.g., "URL" stays "URL")
             }
         } else {
-            // Jackson default: lowercase leading uppercase characters
-            // "URL" -> "url", "URLConnection" -> "urlConnection", "Active" -> "active"
+            // Jackson default: lowercase initial sequence of uppercase characters
+            // "URL" -> "url", "URLConnection" -> "urlConnection", "FOptional" -> "fOptional", "Active" -> "active"
+            if (name.isEmpty()) return name
+
             val sb = StringBuilder()
             var i = 0
             while (i < name.length) {
                 val c = name[i]
                 if (c.isUpperCase()) {
-                    // Check if next char is lowercase or end of string - if so, just lowercase this one
-                    if (i + 1 >= name.length || name[i + 1].isLowerCase()) {
-                        sb.append(c.lowercaseChar())
-                        sb.append(name.substring(i + 1))
+                    val nextIdx = i + 1
+                    val nextIsLower = nextIdx < name.length && name[nextIdx].isLowerCase()
+                    val isLast = nextIdx >= name.length
+
+                    if (nextIsLower && i > 0) {
+                        // This uppercase is followed by lowercase and we've already processed some chars
+                        // Keep this uppercase and append the rest
+                        sb.append(name.substring(i))
                         break
                     } else {
-                        // Next char is also uppercase, lowercase this one and continue
+                        // Lowercase this char and continue
                         sb.append(c.lowercaseChar())
+                        if (isLast || nextIsLower) {
+                            // Last char or next is lowercase - append the rest
+                            if (!isLast) sb.append(name.substring(nextIdx))
+                            break
+                        }
                         i++
                     }
                 } else {
-                    // First lowercase char encountered, append rest as-is
+                    // Hit a lowercase char - append the rest
                     sb.append(name.substring(i))
                     break
                 }
@@ -832,13 +843,31 @@ class ClassReference(
 
                 // Resolve field name via jsonAdapter if available (allows @JsonProperty override)
                 val serializedName = resolveSerializedFieldName(classInfo, propName, ctorParamAnnotations)
-                // Use jsonPropName if no explicit override from @JsonProperty
+                // If no annotation override, use JavaBeans-derived name from getter
+                // This handles cases like "isActive" -> "active" following Jackson's JavaBeans conventions
                 val finalName = if (serializedName == propName) jsonPropName else serializedName
+
+                // Check annotations for optionality from all sources (@field:, @param:, @get:, and bare @)
+                // This allows Jackson annotations to override Kotlin's default value detection
+                val fieldInfo = classInfo?.fieldInfo?.firstOrNull { it.name == propName }
+                val fieldAnnotations = fieldInfo?.annotationInfo?.toList() ?: emptyList()
+                val paramAnnotations = ctorParamAnnotations[propName] ?: emptyList()
+
+                // Also check getter method annotations (@get:JsonProperty)
+                val getterMethodInfo = if (getterMethod != null && classInfo != null) {
+                    classInfo.methodInfo.firstOrNull { it.name == getterMethod.name && it.parameterInfo.isEmpty() }
+                } else null
+                val getterAnnotations = getterMethodInfo?.annotationInfo?.toList() ?: emptyList()
+
+                // Merge all annotation sources (field, getter, and parameter)
+                val combinedAnnotations = fieldAnnotations + getterAnnotations + paramAnnotations
+                val jsonAdapterOptional = jsonAdapter?.isOptional(combinedAnnotations)
+                val optional = jsonAdapterOptional ?: hasDefault
 
                 val fieldType = toTsType(javaType, isNullable, false, typeParams)
                 fields[finalName] = TsField(
                     type = fieldType,
-                    optional = hasDefault,
+                    optional = optional,
                     nullable = isNullable
                 )
             }
@@ -873,7 +902,7 @@ class ClassReference(
 
             // Resolve serialized name (allows @JsonProperty to override)
             val serializedName = resolveSerializedFieldName(classInfo, kotlinPropName, ctorParamAnnotations)
-            // Use jsonPropName if no explicit override from @JsonProperty
+            // Use jsonPropName (JavaBeans naming) if no annotation override, otherwise use serialized name
             val finalName = if (serializedName == kotlinPropName) jsonPropName else serializedName
 
             if (finalName !in fields) {

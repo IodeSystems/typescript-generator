@@ -69,8 +69,23 @@ class JacksonJsonAdapter : JsonAdapter {
         val jp = AnnotationUtils.getAnnotation(an, JsonProperty::class) ?: return super.isOptional(an)
         val required = jp.getBoolean("required")
         val defaultValue = jp.getString("defaultValue")
-        if (required == false) return true
+        val value = jp.getString("value")
+
+        // If defaultValue is set, the field is optional (Jackson will use the default)
         if (!defaultValue.isNullOrBlank()) return true
+
+        // Explicit required=true overrides Kotlin default values and makes field required
+        if (required == true) return false
+
+        // If the annotation is used for renaming (has a 'value' parameter) and required is default false,
+        // don't change optionality - defer to Kotlin's default detection
+        if (!value.isNullOrBlank() && required == false) {
+            return super.isOptional(an)
+        }
+
+        // If required=false without a rename, treat as optional
+        if (required == false) return true
+
         return super.isOptional(an)
     }
 
