@@ -213,6 +213,11 @@ data class Config(
             config = config.copy(omitTypes = fqns.toList()); return this
         }
 
+        /** Alias for [omitTypes]. Replace the list of FQCN prefixes to exclude from type emission. */
+        fun excludeTypes(vararg fqns: String): Builder {
+            return omitTypes(*fqns)
+        }
+
         /** Treat Kotlin/Java `Set` like an array in TypeScript (default true). */
         fun setsAsArrays(set: Boolean = true): Builder {
             config = config.copy(setsAsArrays = set); return this

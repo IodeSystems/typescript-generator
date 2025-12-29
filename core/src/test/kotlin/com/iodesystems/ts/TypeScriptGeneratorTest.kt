@@ -112,7 +112,7 @@ class TypeScriptGeneratorTest {
             onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
           ): AbortablePromise<T | TResult>;
           finally(onfinally?: (() => void) | undefined | null): AbortablePromise<T>;
-        }
+        } & Promise<T>
 
         export function abortable<T>(
           promise: Promise<T>,
@@ -309,6 +309,9 @@ class TypeScriptGeneratorTest {
          */
         export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
         //import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+        /**
+         * Jvm {@link com.iodesystems.ts.TestApi}
+         */
         export class TestApi {
           constructor(private opts: ApiOptions = {}) {}
           post(req: TestApiSimple): AbortablePromise<TestApiSimpleResponseUnion> {

@@ -33,7 +33,7 @@ class Emitter(
             onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
           ): AbortablePromise<T | TResult>;
           finally(onfinally?: (() => void) | undefined | null): AbortablePromise<T>;
-        }
+        } & Promise<T>
 
         export function abortable<T>(
           promise: Promise<T>,
@@ -415,6 +415,12 @@ class Emitter(
                 }
             }
 
+            // Write JSDoc comment with JVM reference
+            if (config.includeRefComments) {
+                o.write("/**\n")
+                o.write(" * Jvm {@link ${api.jvmQualifiedClassName}}\n")
+                o.write(" */\n")
+            }
             o.write("export class ${api.tsBaseName} {\n")
             o.write("  constructor(private opts: ApiOptions = {}) {}\n")
             api.apiMethods.forEach { method ->

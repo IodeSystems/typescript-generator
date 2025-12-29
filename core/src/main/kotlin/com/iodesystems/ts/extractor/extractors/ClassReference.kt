@@ -81,6 +81,50 @@ class ClassReference(
     }
 
     /**
+     * Checks if a parameterized type contains self-references in its type arguments.
+     * TypeScript cannot handle certain self-referential types (e.g., class K : Iterable<K>).
+     *
+     * @param clazz The class being processed
+     * @param parameterizedType The generic superclass or interface to check
+     * @param description A description for the error message (e.g., "interface Iterable")
+     * @throws IllegalStateException if a self-referential type is detected
+     */
+    private fun checkSelfReferentialType(
+        clazz: Class<*>,
+        parameterizedType: ParameterizedType,
+        description: String
+    ) {
+        val actualTypeArgs = parameterizedType.actualTypeArguments
+        actualTypeArgs.forEach { typeArg ->
+            when (typeArg) {
+                // Direct self-reference: class K : Iterable<K>
+                is Class<*> -> {
+                    if (typeArg == clazz) {
+                        throw IllegalStateException(
+                            "Self-referential type detected: ${clazz.name} references itself as a type argument " +
+                            "in $description. TypeScript cannot properly represent this pattern. " +
+                            "Consider using config.excludeTypes(\"${clazz.name}\") or config.omitTypes(\"${clazz.name}\") " +
+                            "to exclude this type from generation."
+                        )
+                    }
+                }
+                // Parameterized self-reference: class K<T> : Iterable<K<T>>
+                is ParameterizedType -> {
+                    val rawType = typeArg.rawType
+                    if (rawType is Class<*> && rawType == clazz) {
+                        throw IllegalStateException(
+                            "Self-referential type detected: ${clazz.name} references itself as a type argument " +
+                            "in $description. TypeScript cannot properly represent this pattern. " +
+                            "Consider using config.excludeTypes(\"${clazz.name}\") or config.omitTypes(\"${clazz.name}\") " +
+                            "to exclude this type from generation."
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Derives the JSON property name from a getter method using Jackson naming conventions.
      * Applies the configured settings for is-getter detection and bean naming.
      *
@@ -753,6 +797,10 @@ class ClassReference(
             rawSuperclass != Any::class.java &&
             rawSuperclass != Object::class.java &&
             config.includeType(rawSuperclass.name)) {
+            // Check for self-referential types
+            if (genericSuperclass is ParameterizedType) {
+                checkSelfReferentialType(clazz, genericSuperclass, "superclass ${rawSuperclass.simpleName}")
+            }
             val superType = toTsType(genericSuperclass, false, false, typeParams)
             intersections.add(superType)
         }
@@ -761,6 +809,10 @@ class ClassReference(
         clazz.genericInterfaces.forEach { genericIface ->
             val rawIface = if (genericIface is ParameterizedType) genericIface.rawType as? Class<*> else genericIface as? Class<*>
             if (rawIface != null && config.includeType(rawIface.name)) {
+                // Check for self-referential types
+                if (genericIface is ParameterizedType) {
+                    checkSelfReferentialType(clazz, genericIface, "interface ${rawIface.simpleName}")
+                }
                 val ifaceType = toTsType(genericIface, false, false, typeParams)
                 intersections.add(ifaceType)
             }
