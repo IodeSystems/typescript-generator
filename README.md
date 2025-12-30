@@ -31,21 +31,21 @@ plugins {
 }
 ```
 
-Configure the generator. The extension and the task are both named `generateTypescript`.
+Configure the generator using the `typescriptGenerator` extension (a legacy `generateTypescript` alias also exists).
 Use the internal mutable `Config` builder via `config { ... }`:
 
 ```kotlin
-generateTypescript {
+typescriptGenerator {
     config {
         // Where files are written (default: "./")
         outputDirectory("src/main/ui/generated")
 
-        // Package patterns to accept for scanning (package prefixes or regex)
+        // Package patterns to scan (package prefixes or regex)
         // This controls both ClassGraph scanning scope and API filtering
-        packageAccept("com.example.api")
+        packageScan("com.example.api")
 
-        // Package patterns to reject (package prefixes or regex)
-        packageReject("com.example.internal")
+        // Package patterns to ignore (package prefixes or regex)
+        packageIgnore("com.example.internal")
 
         // Or include specific API controllers by class
         includeApi<UserController>()
@@ -55,13 +55,27 @@ generateTypescript {
         cleanOutputDir()
 
         // Map JVM types to TypeScript
-        mappedTypes(
+        mapType(
             mapOf(
                 "java.time.OffsetDateTime" to "string",
                 "java.time.LocalDate" to "string",
                 "java.time.LocalTime" to "string",
             )
         )
+        // Or map individual types
+        mapType(OffsetDateTime::class, "Dayjs")
+
+        // Explicitly include types by FQCN (even if not referenced by API)
+        include("com.example.MyType")
+        include<MyOtherType>()
+
+        // Set type name aliases (FQCN → TypeScript name, bypasses typeNameReplacements)
+        alias(
+            mapOf(
+                "com.example.ByteArray" to "Bytes"
+            )
+        )
+        alias(ByteArray::class, "Bytes")
 
         // Treat fields/params with these annotations as optional and/or nullable
         optionalAnnotations("org.jetbrains.annotations.Nullable")
@@ -69,6 +83,7 @@ generateTypescript {
 
         // Replace type simple names via regex → replacement
         typeNameReplacements(mapOf("[.$]" to ""))
+        addTypeNameReplacement("[.$]", "")
 
         // Control output file layout
         // If you set a separate lib file, helpers go to that file; otherwise emitted inline in api.ts
@@ -82,13 +97,30 @@ generateTypescript {
         )
         // When grouping, you can also split shared types
         emitTypesAsSeparateFile("api-types.ts")
+        // Or set a custom types file name
+        typesFileName("my-types.ts")
 
         // Emit custom import lines for external TS types you reference
         externalImportLines(
             mapOf(
-                "Dayjs" to "import { Dayjs } from 'dayjs'",
+                "Dayjs" to "import type { Dayjs } from 'dayjs'",
             )
         )
+        addExternalImportLine("Dayjs", "import type { Dayjs } from 'dayjs'")
+
+        // Add header lines to all generated files (e.g., lint directives)
+        headerLines("/* eslint-disable */", "/* prettier-ignore */")
+        // Or use the convenience method for ESLint
+        eslintDisable()
+
+        // Jackson naming options (advanced)
+        autoDetectIsGetters(true)  // Strip "is" prefix from boolean isX() getters
+        allowIsGettersForNonBoolean(true)  // Also strip "is" from non-boolean isX()
+        useStdBeanNaming(false)  // Use strict JavaBeans naming (getURL -> URL vs url)
+
+        // Other options
+        setsAsArrays(true)  // Treat Java/Kotlin Set as TypeScript array
+        includeRefComments(true)  // Include JVM class name comments in output
     }
 }
 ```
@@ -112,10 +144,12 @@ Build integration:
 ```kotlin
 val generator = com.iodesystems.ts.TypeScriptGenerator.build {
     outputDirectory("./generated")
-        .packageAccept("com.example.api")
-        .packageReject("com.example.internal")
-        .emitLibAsSeparateFile() // "api-lib.ts"
-        .emitTypesAsSeparateFile() // "api-types.ts"
+    packageScan("com.example.api")
+    packageIgnore("com.example.internal")
+    emitLibAsSeparateFile() // "api-lib.ts"
+    emitTypesAsSeparateFile() // "api-types.ts"
+    mapType(java.time.OffsetDateTime::class, "Dayjs")
+    externalImportLines(mapOf("Dayjs" to "import type { Dayjs } from 'dayjs'"))
 }
 
 // Build and write files
@@ -125,22 +159,57 @@ output.write()
 
 ## Configuration Options
 
-- `outputDirectory` (String) — builder: `outputDirectory(dir)`. Directory where generated files are written. Default: `./`
-- `cleanOutputDir` (Boolean) — builder: `cleanOutputDir()`. Delete output files before writing. Default: `false`
-- `packageAccept` (List<String>) — builder: `packageAccept(vararg)` / `addPackageAccept(vararg)` / `includeApi<T>()` / `includeApi(vararg KClass)`. Package prefixes or regex patterns to accept for ClassGraph scanning and API filtering. When using `includeApi`, the class names are added here and the package is extracted for scanning.
-- `packageReject` (List<String>) — builder: `packageReject(vararg)` / `addPackageReject(vararg)`. Package prefixes or regex patterns to reject from scanning and API filtering.
-- `mappedTypes` (Map<String,String>) — builder: `mappedTypes(map)` / `mappedType(KClass, String)`. Map JVM FQCN to TypeScript identifier.
-- `optionalAnnotations` (Set<String>) — builder: `optionalAnnotations(vararg)` / `addOptionalAnnotations(vararg)`. FQCNs that mark a field/param/getter as optional.
-- `nullableAnnotations` (Set<String>) — builder: `nullableAnnotations(vararg)` / `addNullableAnnotations(vararg)`. FQCNs that mark a field/param/getter as nullable.
-- `typeNameReplacements` (Map<Regex,String>) — builder: `typeNameReplacements(map)` / `addTypeNameReplacement(pattern, replacement)`. Regex replacement rules for simple type names.
-- `emitLibFileName` (String?) — builder: `emitLibAsSeparateFile(name)`. If set, emit API helpers to this file (commonly `api-lib.ts`).
-- `groupApiFile` (Map<String, List<String>>?) — builder: `groupApis(map)`. Group controllers (by FQCN) into specific output files.
-- `typesFileName` (String?) — builder: `typesFileName(name)` / `emitTypesAsSeparateFile(name)`. When grouping or splitting types, the output types file name (e.g., `api-types.ts`).
-- `externalImportLines` (Map<String,String>) — builder: `externalImportLines(map)` / `addExternalImportLine(name, line)`. Map of simple type name to import line to emit at top of files.
+All configuration is done through the `Config.Builder` class. Here are the available options:
+
+### Basic Options
+
+- `outputDirectory(dir: String)` — Directory where generated files are written. Default: `./`
+- `cleanOutputDir(set: Boolean = true)` — Delete output files before writing. Default: `false`
+- `includeRefComments(set: Boolean = true)` — Emit JVM class name comments in output. Default: `true`
+- `setsAsArrays(set: Boolean = true)` — Treat Kotlin/Java `Set` like TypeScript arrays. Default: `true`
+
+### Scanning & Filtering
+
+- `packageScan(vararg patterns: String)` — Package prefixes or regex patterns for ClassGraph scanning and API filtering
+- `packageIgnore(vararg patterns: String)` — Package prefixes or regex patterns to reject from scanning
+- `includeApi<T>()` / `includeApi(vararg classes: KClass<*>)` — Include specific API controllers by class
+- `include(vararg fqns: String)` / `include<T>()` / `include(vararg classes: KClass<*>)` — Explicitly include types by FQCN (even if not referenced by API methods)
+- `exclude(vararg fqns: String)` / `exclude(vararg classes: KClass<*>)` — Replace the list of FQCNs/classes to exclude from type emission
+
+### Type Mapping & Naming
+
+- `mapType(map: Map<String, String>)` / `mapType(klass: KClass<*>, tsIdentifier: String)` — Map JVM types to TypeScript identifiers (e.g., `OffsetDateTime` → `"Dayjs"`)
+- `alias(map: Map<String, String>)` / `alias(klass: KClass<*>, tsName: String)` — Set explicit TypeScript type names (FQCN → name, bypasses typeNameReplacements)
+- `typeNameReplacements(mapping: Map<String, String>)` / `addTypeNameReplacement(pattern: String, replacement: String)` — Regex replacement rules for simple type names (e.g., `"[.$]"` → `""` to strip $ from nested class names)
+
+### Annotations
+
+- `optionalAnnotations(vararg fqns: String)` — FQCNs of annotations that mark fields/params as optional
+- `nullableAnnotations(vararg fqns: String)` — FQCNs of annotations that mark fields/params as nullable
+
+### Output Layout
+
+- `emitLibAsSeparateFile(name: String = "api-lib.ts")` — Emit API helpers to a separate file
+- `emitTypesAsSeparateFile(name: String = "api-types.ts")` — Emit types to a separate file
+- `typesFileName(name: String)` — Set the shared types file name (used when grouping or splitting types)
+- `groupApis(grouping: Map<String, List<String>>)` — Group specific controllers into named API files. Key = output TS filename, value = controller FQCNs
+
+### Imports & Headers
+
+- `externalImportLines(mapping: Map<String, String>)` / `externalImportLines(vararg pairs: Pair<String, String>)` — Map TypeScript type names to import statements
+- `addExternalImportLine(name: String, importLine: String)` — Add a single external import line
+- `headerLines(vararg lines: String)` — Lines to write at the top of every generated TS file
+- `eslintDisable(disableNoExplicitAny: Boolean = true, disableNoUnusedVars: Boolean = true, vararg otherRulesToDisable: String)` — Convenience method to add ESLint disable directives
+
+### Jackson Naming Options (Advanced)
+
+- `autoDetectIsGetters(enabled: Boolean)` — Detect boolean `isX()` getters and strip "is" prefix. Default: `true` (Jackson default)
+- `allowIsGettersForNonBoolean(enabled: Boolean)` — Also strip "is" prefix from non-boolean `isX()` methods. Default: `true` (Jackson 2.14+)
+- `useStdBeanNaming(enabled: Boolean)` — Use strict JavaBeans naming (e.g., `getURL()` → `"URL"` instead of `"url"`). Default: `false` (Jackson default)
 
 ## Spring Boot Support
 
-Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `packageAccept` and `packageReject` to control the scope, or `includeApi` to target specific controller classes.
+Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `packageScan` and `packageIgnore` to control the scope, or `includeApi` to target specific controller classes.
 
 ## Samples
 
@@ -156,12 +225,11 @@ Out of the box, the generator looks for Spring MVC/Web annotations and extracts 
 
 ## Kitchen Sink Example
 
-Below is a compact Spring controller showcasing many supported features (generics, nested types, unions, path/query params, optional/nullable, lists, maps). This exact class is used by the tests (`EmitterTest#kitchenSink`).
+Below is a compact Spring controller showcasing many supported features (generics, nested types, unions, path/query params, optional/nullable, lists, maps). This exact class is used in the test suite: [EmitterTest.kt](/core/src/test/kotlin/com/iodesystems/ts/emitter/EmitterTest.kt)
 
 ```kotlin
-// In an object: com.iodesystems.ts.emitter.EmitterTest
 @RestController
-@RequestMapping
+@RequestMapping("herp/derp")
 class KitchenSink {
 
   @JsonTypeInfo(use = JsonTypeInfo.Id.SIMPLE_NAME)
@@ -304,30 +372,30 @@ export type EmitterTestKitchenSinkGetResponse = {
 }
 export class EmitterTestKitchenSink {
   constructor(private opts: ApiOptions = {}) {}
-  post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): Promise<EmitterTestKitchenSinkUnionUnion> {
-    return fetchInternal(this.opts, "/", {
+  post(req: Record<string,EmitterTestKitchenSinkRequest<string,number>>): AbortablePromise<EmitterTestKitchenSinkUnionUnion> {
+    return fetchInternal(this.opts, "herp/derp", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req)
     }).then(r=>r.json())
   }
-  get(): Promise<Array<EmitterTestKitchenSinkGetResponse | null>> {
-    return fetchInternal(this.opts, "/", {
+  get(): AbortablePromise<Array<EmitterTestKitchenSinkGetResponse | null>> {
+    return fetchInternal(this.opts, "herp/derp", {
       method: "GET"
     }).then(r=>r.json())
   }
-  path(path: { id: string | number }): Promise<void> {
-    return fetchInternal(this.opts, "/{id}".replace("{id}", String(path.id)), {
+  path(path: { id: string | number }): AbortablePromise<void> {
+    return fetchInternal(this.opts, "herp/derp/{id}".replace("{id}", String(path.id)), {
       method: "GET"
     }).then(r=>{})
   }
-  search(query: EmitterTestKitchenSinkSearchQuery): Promise<Array<number>> {
-    return fetchInternal(this.opts, flattenQueryParams("/search", query, null), {
+  search(query: EmitterTestKitchenSinkSearchQuery): AbortablePromise<Array<number>> {
+    return fetchInternal(this.opts, flattenQueryParams("herp/derp/search", query, null), {
       method: "GET"
     }).then(r=>r.json())
   }
-  optional(req: EmitterTestKitchenSinkOther | null): Promise<void> {
-    return fetchInternal(this.opts, "/optional", {
+  optional(req: EmitterTestKitchenSinkOther | null): AbortablePromise<void> {
+    return fetchInternal(this.opts, "herp/derp/optional", {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req)
@@ -339,7 +407,13 @@ export class EmitterTestKitchenSink {
 
 ```
 
-Note: In single-file mode, a small helper library (`ApiOptions`, `fetchInternal`, `flattenQueryParams`) is emitted at the top of `api.ts`. For brevity it’s omitted here.
+Note: In single-file mode, a small helper library is emitted at the top of `api.ts`. This includes:
+- `ApiOptions`: Configuration object for the API client (base URL, headers, etc.)
+- `AbortablePromise<T>`: A Promise with an `abort()` method for canceling requests
+- `fetchInternal()`: Internal fetch wrapper that handles the request lifecycle
+- `flattenQueryParams()`: Helper to convert query parameter objects to URL query strings
+
+For brevity, the helper library is omitted from this example.
 
 ## Building
 
