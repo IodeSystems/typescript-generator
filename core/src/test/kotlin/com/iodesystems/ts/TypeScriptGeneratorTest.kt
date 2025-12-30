@@ -85,9 +85,9 @@ class TypeScriptGeneratorTest {
         val em = emitter(TestApi::class) {
             outputDirectory("./tmp")
                 .emitLibAsSeparateFile()
-                .mappedType(OffsetDateTime::class, "Dayjs | string")
-                .mappedType(LocalDate::class, "string")
-                .mappedType(LocalTime::class, "string")
+                .mapType(OffsetDateTime::class, "Dayjs | string")
+                .mapType(LocalDate::class, "string")
+                .mapType(LocalTime::class, "string")
                 .externalImportLines("Dayjs" to "import type {Dayjs} from 'dayjs'")
         }
         val content = em.ts().content(includeLib = true)

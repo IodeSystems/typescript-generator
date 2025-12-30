@@ -31,7 +31,7 @@ class ExternalClassPathTest {
             // Use override classpath to load types from external jars
             classPathUrls { externalJars }
             // Only include the API package - types should be discovered from external dep
-            packageAccept("com.external.core.api.UserController")
+            packageScan("com.external.core.api.UserController")
         }.generate()
 
         val ts = output.ts()
@@ -111,7 +111,7 @@ class ExternalClassPathTest {
 
         val output = TypeScriptGenerator.build {
             classPathUrls { externalJars }
-            packageAccept("com.external.core.api.UserController")
+            packageScan("com.external.core.api.UserController")
         }.generate()
 
         val ts = output.ts()
@@ -151,7 +151,7 @@ class ExternalClassPathTest {
 
         val output = TypeScriptGenerator.build {
             classPathUrls { externalJars }
-            packageAccept("com.external.core.api.UserController")
+            packageScan("com.external.core.api.UserController")
         }.generate()
 
         val ts = output.ts()
@@ -196,7 +196,7 @@ class ExternalClassPathTest {
         val output = TypeScriptGenerator.build {
             classPathUrls { externalJars }
             // Include the controller that uses @ApiController meta-annotation from external jar
-            packageAccept("com.external.core.api.AppointmentController")
+            packageScan("com.external.core.api.AppointmentController")
         }.generate()
 
         val ts = output.ts()

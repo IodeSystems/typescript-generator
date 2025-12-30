@@ -12,15 +12,20 @@ import kotlin.test.assertTrue
 @RequestMapping("/self-ref/")
 class SelfReferentialApi {
 
-    // This is a problematic self-referential type
-    // class that implements Iterable<itself>
-    class SelfIterableNode : Iterable<SelfIterableNode> {
-        private val items = listOf<SelfIterableNode>()
-        override fun iterator(): Iterator<SelfIterableNode> = items.iterator()
+    // Custom interface to avoid exclusion by omitTypes
+    interface CustomContainer<T> {
+        fun getItems(): List<T>
     }
 
-    @GetMapping("/iterable")
-    fun getIterable(): SelfIterableNode = error("test")
+    // This is a problematic self-referential type
+    // class that implements CustomContainer<itself>
+    class SelfContainerNode : CustomContainer<SelfContainerNode> {
+        private val items = listOf<SelfContainerNode>()
+        override fun getItems(): List<SelfContainerNode> = items
+    }
+
+    @GetMapping("/container")
+    fun getContainer(): SelfContainerNode = error("test")
 }
 
 class SelfReferentialTypeTest {
@@ -36,21 +41,20 @@ class SelfReferentialTypeTest {
             "Expected error about self-referential type, got: ${exception.message}"
         )
         assertTrue(
-            exception.message?.contains("SelfIterableNode") == true,
-            "Expected error to mention SelfIterableNode, got: ${exception.message}"
+            exception.message?.contains("SelfContainerNode") == true,
+            "Expected error to mention SelfContainerNode, got: ${exception.message}"
         )
         assertTrue(
-            exception.message?.contains("excludeTypes") == true ||
-            exception.message?.contains("omitTypes") == true,
-            "Expected error to suggest excludeTypes or omitTypes, got: ${exception.message}"
+            exception.message?.contains("exclude") == true,
+            "Expected error to suggest exclude, got: ${exception.message}"
         )
     }
 
     @RestController
     @RequestMapping("/excluded/")
     class ExcludedSelfReferentialApi {
-        @GetMapping("/iterable")
-        fun getIterable(): SelfReferentialApi.SelfIterableNode? = null
+        @GetMapping("/container")
+        fun getContainer(): SelfReferentialApi.SelfContainerNode? = null
     }
 
     @Test
@@ -58,7 +62,7 @@ class SelfReferentialTypeTest {
         // When we exclude the self-referential type, it should be treated as 'any'
         // and not cause an error
         val em = emitter(ExcludedSelfReferentialApi::class) {
-            excludeTypes("com.iodesystems.ts.SelfReferentialApi\$SelfIterableNode")
+            exclude("com.iodesystems.ts.SelfReferentialApi\$SelfContainerNode")
         }
 
         // Should complete without error

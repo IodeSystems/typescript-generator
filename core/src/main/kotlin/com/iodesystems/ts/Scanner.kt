@@ -51,8 +51,8 @@ class Scanner(private val config: Config) {
     }
 
     fun scan(): ScanResult {
-        val packagePrefixes = extractPackagePrefixes(config.packageAccept)
-        val rejectPrefixes = extractPackagePrefixes(config.packageReject)
+        val packagePrefixes = extractPackagePrefixes(config.packageScan)
+        val rejectPrefixes = extractPackagePrefixes(config.packageIgnore)
 
         return ClassGraph()
             .enableAllInfo()

@@ -20,15 +20,14 @@ data class Config(
     val setsAsArrays: Boolean = true,
     val omitTypes: List<String> = listOf(
         Class::class,
-        java.lang.Comparable::class,
-        java.io.Serializable::class,
         kotlin.enums.EnumEntries::class,
-        java.lang.Enum::class
     ).map { it.qualifiedName!! } +
-            // Kotlin rewrites java.lang.Comparable to kotlin.lang.Comparable
+            // Handle kotlin's sneaky renames
             listOf(
                 "java.lang.Comparable",
-                "java.lang.Enum"
+                "java.lang.Enum",
+                "java.lang.Iterable",
+                "java.io.Serializable"
             ),
     val mappedTypes: Map<String, String> = mapOf(
         // Using JavaTimeModule from jackson-datatype-jsr310
@@ -37,7 +36,10 @@ data class Config(
         LocalDate::class.qualifiedName!! to "string",
         LocalTime::class.qualifiedName!! to "string",
         // Optional
-        java.util.Optional::class.qualifiedName!! to "T | null"
+        java.util.Optional::class.qualifiedName!! to "T | null",
+        // Kotlin Any maps to java.lang.Object, which should be any in TypeScript
+        "java.lang.Object" to "any",
+        "kotlin.Any" to "any"
     ),
     // Map of FQCN -> explicit TypeScript type name (bypasses typeNameReplacements)
     // This is for naming, not for type mapping. Use with mappedTypes to create type aliases.
@@ -63,10 +65,10 @@ data class Config(
         "jakarta.annotation.Nullable",
         "org.jetbrains.annotations.Nullable",
     ),
-    // Package accept/reject patterns for ClassGraph scanning and API selection.
+    // Package scan/ignore patterns for ClassGraph scanning and API selection.
     // Supports package prefixes (e.g., "com.example") or regex patterns.
-    val packageAccept: List<String> = emptyList(),
-    val packageReject: List<String> = emptyList(),
+    val packageScan: List<String> = emptyList(),
+    val packageIgnore: List<String> = emptyList(),
     // Regex-based type name replacements. Keys are regex, values are replacement (supports capture groups).
     // Applied to the simple class name to produce the TypeScript alias.
     val typeNameReplacements: Map<String, String> = mapOf(
@@ -115,8 +117,8 @@ data class Config(
                 if (outputDirectory != "./") "outputDirectory='$outputDirectory'" else null,
                 if (optionalAnnotations.isNotEmpty()) "optionalAnnotations=$optionalAnnotations" else null,
                 if (nullableAnnotations.isNotEmpty()) "nullableAnnotations=$nullableAnnotations" else null,
-                if (packageAccept.isNotEmpty()) "packageAccept=$packageAccept" else null,
-                if (packageReject.isNotEmpty()) "packageReject=$packageReject" else null,
+                if (packageScan.isNotEmpty()) "packageScan=$packageScan" else null,
+                if (packageIgnore.isNotEmpty()) "packageIgnore=$packageIgnore" else null,
                 if (typeNameReplacements.isNotEmpty()) "typeNameReplacements=$typeNameReplacements" else null,
                 emitLibFileName?.let { "emitLibFileName='$it'" },
                 groupApiFile?.let { "groupApiFile=$it" },
@@ -157,14 +159,14 @@ data class Config(
 
     fun includeApi(name: String): Boolean {
         val included =
-            if (packageAccept.isEmpty()) true
-            else packageAccept.any {
+            if (packageScan.isEmpty()) true
+            else packageScan.any {
                 name == it || name.startsWith("$it.") || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
             }
         if (!included) return false
         val excluded =
-            if (packageReject.isEmpty()) false
-            else packageReject.any {
+            if (packageIgnore.isEmpty()) false
+            else packageIgnore.any {
                 name == it || name.startsWith("$it.") || regexCache.getOrPut(it) { Regex(it) }.containsMatchIn(name)
             }
         return !excluded
@@ -208,14 +210,14 @@ data class Config(
     class Builder(
         var config: Config = Config(),
     ) {
-        /** Replace the list of FQCN prefixes to omit entirely from type emission. */
-        fun omitTypes(vararg fqns: String): Builder {
+        /** Replace the list of FQCN prefixes to exclude from type emission. */
+        fun exclude(vararg fqns: String): Builder {
             config = config.copy(omitTypes = fqns.toList()); return this
         }
 
-        /** Alias for [omitTypes]. Replace the list of FQCN prefixes to exclude from type emission. */
-        fun excludeTypes(vararg fqns: String): Builder {
-            return omitTypes(*fqns)
+        /** Replace the list of class types to exclude from type emission. */
+        fun exclude(vararg classes: KClass<*>): Builder {
+            config = config.copy(omitTypes = classes.map { it.java.name }); return this
         }
 
         /** Treat Kotlin/Java `Set` like an array in TypeScript (default true). */
@@ -246,28 +248,18 @@ data class Config(
         }
 
         /** Add/override multiple JVM→TS type mappings. */
-        fun mappedTypes(map: Map<String, String>): Builder {
+        fun mapType(map: Map<String, String>): Builder {
             config = config.copy(mappedTypes = config.mappedTypes + map); return this
         }
 
         /** Map a single JVM class to a TS type identifier (e.g., `Dayjs | string`). */
-        fun mappedType(klass: KClass<*>, tsIdentifier: String): Builder {
+        fun mapType(klass: KClass<*>, tsIdentifier: String): Builder {
             config = config.copy(mappedTypes = config.mappedTypes + (klass.java.name to tsIdentifier)); return this
         }
 
         /** Set type name aliases: FQCN → TypeScript name (bypasses typeNameReplacements). */
         fun alias(map: Map<String, String>): Builder {
-            config = config.copy(alias = map); return this
-        }
-
-        /** Add/override multiple type name aliases: FQCN → TypeScript name. */
-        fun addAlias(map: Map<String, String>): Builder {
             config = config.copy(alias = config.alias + map); return this
-        }
-
-        /** Add a single type name alias: map FQCN to explicit TypeScript type name. */
-        fun alias(fqcn: String, tsName: String): Builder {
-            config = config.copy(alias = config.alias + (fqcn to tsName)); return this
         }
 
         /** Add a single type name alias using KClass: map class to explicit TypeScript type name. */
@@ -276,53 +268,32 @@ data class Config(
         }
 
         /** Accept packages for scanning (package prefixes or regex). */
-        fun packageAccept(vararg patterns: String): Builder {
-            config = config.copy(packageAccept = patterns.toList()); return this
+        fun packageScan(vararg patterns: String): Builder {
+            config = config.copy(packageScan = patterns.toList()); return this
         }
 
-        /** Add to accepted packages (package prefixes or regex). */
-        fun addPackageAccept(vararg patterns: String): Builder {
-            config = config.copy(packageAccept = config.packageAccept + patterns.toList()); return this
-        }
-
-        /** Include specific API controllers by class (adds to packageAccept). */
+        /** Include specific API controllers by class (adds to packageScan). */
         inline fun <reified T> includeApi(): Builder = includeApi(T::class)
         fun includeApi(vararg classes: KClass<*>): Builder {
-            config = config.copy(packageAccept = config.packageAccept + classes.map { it.java.name })
+            config = config.copy(packageScan = config.packageScan + classes.map { it.java.name })
             return this
         }
 
         /** Explicitly include types by FQCN (even if not referenced by API methods). */
-        fun includeTypes(vararg fqns: String): Builder {
+        fun include(vararg fqns: String): Builder {
             config = config.copy(includeTypes = fqns.toList()); return this
         }
 
         /** Explicitly include types by KClass (even if not referenced by API methods). */
-        inline fun <reified T> includeTypes(): Builder = includeTypes(T::class)
-        fun includeTypes(vararg classes: KClass<*>): Builder {
+        inline fun <reified T> include(): Builder = include(T::class)
+        fun include(vararg classes: KClass<*>): Builder {
             config = config.copy(includeTypes = classes.map { it.java.name })
             return this
         }
 
-        /** Add to explicitly included types. */
-        fun addIncludeTypes(vararg fqns: String): Builder {
-            config = config.copy(includeTypes = config.includeTypes + fqns.toList()); return this
-        }
-
-        /** Add to explicitly included types by KClass. */
-        fun addIncludeTypes(vararg classes: KClass<*>): Builder {
-            config = config.copy(includeTypes = config.includeTypes + classes.map { it.java.name })
-            return this
-        }
-
         /** Reject packages from scanning (package prefixes or regex). */
-        fun packageReject(vararg patterns: String): Builder {
-            config = config.copy(packageReject = patterns.toList()); return this
-        }
-
-        /** Add to rejected packages (package prefixes or regex). */
-        fun addPackageReject(vararg patterns: String): Builder {
-            config = config.copy(packageReject = config.packageReject + patterns.toList()); return this
+        fun packageIgnore(vararg patterns: String): Builder {
+            config = config.copy(packageIgnore = patterns.toList()); return this
         }
 
         /** Set optional-annotated FQCNs (treat annotated fields/params as optional). */
@@ -330,19 +301,9 @@ data class Config(
             config = config.copy(optionalAnnotations = fqns.toSet()); return this
         }
 
-        /** Add optional-annotated FQCNs to the current set. */
-        fun addOptionalAnnotations(vararg fqns: String): Builder {
-            config = config.copy(optionalAnnotations = config.optionalAnnotations + fqns); return this
-        }
-
         /** Set nullable-annotated FQCNs (treat annotated fields/params as nullable). */
         fun nullableAnnotations(vararg fqns: String): Builder {
             config = config.copy(nullableAnnotations = fqns.toSet()); return this
-        }
-
-        /** Add nullable-annotated FQCNs to the current set. */
-        fun addNullableAnnotations(vararg fqns: String): Builder {
-            config = config.copy(nullableAnnotations = config.nullableAnnotations + fqns); return this
         }
 
         /** Emit library helpers to a separate file (default name `api-lib.ts`). */

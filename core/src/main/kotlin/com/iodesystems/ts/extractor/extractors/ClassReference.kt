@@ -103,7 +103,7 @@ class ClassReference(
                         throw IllegalStateException(
                             "Self-referential type detected: ${clazz.name} references itself as a type argument " +
                             "in $description. TypeScript cannot properly represent this pattern. " +
-                            "Consider using config.excludeTypes(\"${clazz.name}\") or config.omitTypes(\"${clazz.name}\") " +
+                            "Consider using config.exclude(\"${clazz.name}\") " +
                             "to exclude this type from generation."
                         )
                     }
@@ -115,7 +115,7 @@ class ClassReference(
                         throw IllegalStateException(
                             "Self-referential type detected: ${clazz.name} references itself as a type argument " +
                             "in $description. TypeScript cannot properly represent this pattern. " +
-                            "Consider using config.excludeTypes(\"${clazz.name}\") or config.omitTypes(\"${clazz.name}\") " +
+                            "Consider using config.exclude(\"${clazz.name}\") " +
                             "to exclude this type from generation."
                         )
                     }

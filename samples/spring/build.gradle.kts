@@ -15,7 +15,7 @@ plugins {
 
 typescriptGenerator {
     config {
-        packageAccept("com.iodesystems.ts.sample.api")
+        packageScan("com.iodesystems.ts.sample.api")
         emitLibAsSeparateFile("api-lib.ts")
         emitTypesAsSeparateFile("api-types.ts")
         outputDirectory("src/main/ui/gen")
@@ -24,7 +24,7 @@ typescriptGenerator {
                 "Dayjs" to "import type {Dayjs} from 'dayjs'"
             )
         )
-        mappedType(OffsetDateTime::class, "Dayjs")
+        mapType(OffsetDateTime::class, "Dayjs")
     }
 }
 

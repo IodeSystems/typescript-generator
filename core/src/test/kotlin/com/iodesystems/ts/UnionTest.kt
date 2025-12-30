@@ -16,7 +16,7 @@ class UnionTest {
     @Test
     fun object_unions() {
         val emitter = emitter {
-            packageAccept("com.external.unions.ObjectUnions")
+            packageScan("com.external.unions.ObjectUnions")
             classPathUrls { getExternalClasspath() }
         }
         val result = emitter.ts().content()

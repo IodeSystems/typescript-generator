@@ -11,10 +11,10 @@ class CustomClassPathTest {
     fun testCustomClassPath() {
         @Suppress("UnusedVariable")
         val em = emitter {
-            packageAccept("com.iodesystems.web.api")
+            packageScan("com.iodesystems.web.api")
             emitLibAsSeparateFile()
             emitTypesAsSeparateFile()
-            mappedTypes(
+            mapType(
                 mapOf(
                     "com.yubico.webauthn.data.ByteArray" to "string",
                     "com.yubico.webauthn.data.AuthenticatorTransport" to "string",

@@ -46,7 +46,7 @@ class IncludeTypesTest {
     fun includesTypesExplicitlyByFqcn() {
         val em = emitter(IncludeTypesApi::class) {
             outputDirectory("./tmp")
-            includeTypes(
+            include(
                 "com.iodesystems.ts.UnreferencedType",
                 "com.iodesystems.ts.UnreferencedEnum"
             )
@@ -100,7 +100,7 @@ class IncludeTypesTest {
     fun includesTypesExplicitlyByKClass() {
         val em = emitter(IncludeTypesApi::class) {
             outputDirectory("./tmp")
-            includeTypes(UnreferencedType::class, UnreferencedEnum::class)
+            include(UnreferencedType::class, UnreferencedEnum::class)
         }
         val out = em.ts().content()
 
@@ -129,21 +129,20 @@ class IncludeTypesTest {
     fun includesTypesWithReifiedGeneric() {
         val em = emitter(IncludeTypesApi::class) {
             outputDirectory("./tmp")
-            includeTypes<UnreferencedType>()
-            addIncludeTypes(UnreferencedEnum::class)
+            include(UnreferencedType::class, UnreferencedEnum::class)
         }
         val out = em.ts().content()
 
         // Verify UnreferencedType is emitted
         out.assertContains(
             fragment = "export type UnreferencedType",
-            why = "UnreferencedType should be emitted when included via reified generic"
+            why = "UnreferencedType should be emitted when included via KClass"
         )
 
         // Verify UnreferencedEnum is emitted
         out.assertContains(
             fragment = "export type UnreferencedEnum",
-            why = "UnreferencedEnum should be emitted when added via KClass"
+            why = "UnreferencedEnum should be emitted when included via KClass"
         )
     }
 
@@ -151,7 +150,7 @@ class IncludeTypesTest {
     fun includesNestedTypesRecursively() {
         val em = emitter(IncludeTypesApi::class) {
             outputDirectory("./tmp")
-            includeTypes(AnotherUnreferencedType::class)
+            include(AnotherUnreferencedType::class)
         }
         val out = em.ts().content()
 
@@ -188,7 +187,7 @@ class IncludeTypesTest {
     fun includesUnionTypesWithDiscriminator() {
         val em = emitter(IncludeTypesApi::class) {
             outputDirectory("./tmp")
-            includeTypes(UnreferencedUnion::class)
+            include(UnreferencedUnion::class)
         }
         val out = em.ts().content()
 

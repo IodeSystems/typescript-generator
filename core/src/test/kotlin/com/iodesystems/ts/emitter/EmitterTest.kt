@@ -107,7 +107,7 @@ class EmitterTest {
     @Test
     fun emits_type_alias_for_single_param_json_creator() {
         val emitter = emitter(JsonCreatorAliasTypes.Api::class) {
-            mappedType(JsonCreatorAliasTypes.ByteString::class, "string")
+            mapType(JsonCreatorAliasTypes.ByteString::class, "string")
         }
         val result = emitter.ts().content()
         // Expect a type alias like: export type ByteString = string

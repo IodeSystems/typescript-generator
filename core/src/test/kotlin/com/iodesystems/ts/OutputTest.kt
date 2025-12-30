@@ -61,11 +61,11 @@ class OutputTest {
     fun unifiedOutputTest() {
         TypeScriptGenerator.build {
             cleanOutputDir()
-            packageAccept(".*OutputApi.*")
+            packageScan(".*OutputApi.*")
             outputDirectory("./build/test/output-test/test-unified")
-            mappedType(OffsetDateTime::class, "Dayjs | string")
-            mappedType(LocalDate::class, "string")
-            mappedType(LocalTime::class, "string")
+            mapType(OffsetDateTime::class, "Dayjs | string")
+            mapType(LocalDate::class, "string")
+            mapType(LocalTime::class, "string")
             externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }
             .generate().write()
@@ -119,12 +119,12 @@ class OutputTest {
         // Generate with separate lib file
         TypeScriptGenerator.build {
             cleanOutputDir()
-            packageAccept(".*OutputApi.*")
+            packageScan(".*OutputApi.*")
             emitLibAsSeparateFile()
             outputDirectory("./build/test/output-test/separate-lib")
-            mappedType(OffsetDateTime::class, "Dayjs | string")
-            mappedType(LocalDate::class, "string")
-            mappedType(LocalTime::class, "string")
+            mapType(OffsetDateTime::class, "Dayjs | string")
+            mapType(LocalDate::class, "string")
+            mapType(LocalTime::class, "string")
             externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }.generate().write()
 
@@ -159,7 +159,7 @@ class OutputTest {
         // Generate grouped APIs
         TypeScriptGenerator.build {
             cleanOutputDir()
-            packageAccept(".*OutputApi.*")
+            packageScan(".*OutputApi.*")
             emitLibAsSeparateFile()
             groupApis(
                 mapOf(
@@ -169,9 +169,9 @@ class OutputTest {
                 )
             )
             outputDirectory("./build/test/output-test/api-groups")
-            mappedType(OffsetDateTime::class, "Dayjs | string")
-            mappedType(LocalDate::class, "string")
-            mappedType(LocalTime::class, "string")
+            mapType(OffsetDateTime::class, "Dayjs | string")
+            mapType(LocalDate::class, "string")
+            mapType(LocalTime::class, "string")
             externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }.generate()
             .write()
@@ -228,7 +228,7 @@ class OutputTest {
         // Generate grouped APIs
         TypeScriptGenerator.build {
             cleanOutputDir()
-            packageAccept(".*OutputApi.*")
+            packageScan(".*OutputApi.*")
             typesFileName("api-types.ts")
             emitLibAsSeparateFile()
             groupApis(
@@ -239,9 +239,9 @@ class OutputTest {
                 )
             )
             outputDirectory("./build/test/output-test/api-groups-split-types")
-            mappedType(OffsetDateTime::class, "Dayjs | string")
-            mappedType(LocalDate::class, "string")
-            mappedType(LocalTime::class, "string")
+            mapType(OffsetDateTime::class, "Dayjs | string")
+            mapType(LocalDate::class, "string")
+            mapType(LocalTime::class, "string")
             externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }.generate().write()
 
@@ -256,9 +256,9 @@ class OutputTest {
                 .typesFileName("api-types.ts")
                 .includeApi<OutputApiD>()
                 .outputDirectory("./build/test/output-test/split-types-simple")
-                .mappedType(OffsetDateTime::class, "Dayjs | string")
-                .mappedType(LocalDate::class, "string")
-                .mappedType(LocalTime::class, "string")
+                .mapType(OffsetDateTime::class, "Dayjs | string")
+                .mapType(LocalDate::class, "string")
+                .mapType(LocalTime::class, "string")
                 .externalImportLines(mapOf("Dayjs" to "import type {Dayjs} from 'dayjs'"))
         }
         emitter.ts().write()

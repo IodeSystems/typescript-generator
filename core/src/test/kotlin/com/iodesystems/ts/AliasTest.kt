@@ -28,7 +28,7 @@ class AliasTest {
     fun aliasReplacesTypeNameWithCustomName() {
         val em = emitter(AliasTestApi::class) {
             outputDirectory("./tmp")
-            alias($$"com.iodesystems.ts.AliasTestApi$ByteArray", "Bytes")
+            alias(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "Bytes"))
         }
         val out = em.ts().content()
 
@@ -57,7 +57,7 @@ class AliasTest {
             outputDirectory("./tmp")
             // This should NOT affect our alias
             addTypeNameReplacement("Array", "Arr")
-            alias("com.iodesystems.ts.AliasTestApi\$ByteArray", "Bytes")
+            alias(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "Bytes"))
         }
         val out = em.ts().content()
 
@@ -84,8 +84,8 @@ class AliasTest {
     fun aliasWithMappedTypeCreatesTypeAlias() {
         val em = emitter(AliasTestApi::class) {
             outputDirectory("./tmp")
-            alias("com.iodesystems.ts.AliasTestApi\$ByteArray", "Bytes")
-            mappedTypes(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "string"))
+            alias(AliasTestApi.ByteArray::class, "Bytes")
+            mapType(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "string"))
         }
         val out = em.ts().content()
 
@@ -130,18 +130,18 @@ class AliasTest {
     }
 
     @Test
-    fun addAliasAddsToExistingAliases() {
+    fun aliasOverridesPreviousAliases() {
         val em = emitter(AliasTestApi::class) {
             outputDirectory("./tmp")
-            alias("com.iodesystems.ts.AliasTestApi\$ByteArray", "FirstName")
-            addAlias(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "Bytes"))
+            alias(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "FirstName"))
+            alias(mapOf("com.iodesystems.ts.AliasTestApi\$ByteArray" to "Bytes"))
         }
         val out = em.ts().content()
 
         // The second alias should override the first
         out.assertContains(
             fragment = "export type Bytes = {",
-            why = "addAlias should override previous alias"
+            why = "alias should override previous alias"
         )
     }
 }
