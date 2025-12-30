@@ -256,7 +256,7 @@ class ClassReference(
         val fqcn = clazz.name
 
         // Check for user-configured mapped types
-        config.mappedTypes[fqcn]?.let { mappedValue ->
+        config.mapType[fqcn]?.let { mappedValue ->
             // Create an alias type and register it if not already cached
             val simpleName = fqcn.removePrefix(clazz.packageName.plus("."))
             val tsName = config.customNaming(fqcn, simpleName)
@@ -372,7 +372,7 @@ class ClassReference(
         val kmArgs = kmType?.arguments ?: emptyList()
 
         // Check for user-configured mapped types
-        config.mappedTypes[fqcn]?.let { mappedName ->
+        config.mapType[fqcn]?.let { mappedName ->
             // Handle generic mapped types like Optional<T> -> "T | null"
             val generics = if (actualTypeArgs.isNotEmpty()) {
                 val nestedKmType = kmArgs.getOrNull(0)?.type
@@ -856,6 +856,9 @@ class ClassReference(
         // Get ClassGraph ClassInfo for annotation access
         val classInfo = scan.getClassInfo(clazz.name)
 
+        // Check if class has @JsonInclude(NON_NULL) - when true, nullable fields become optional (not null)
+        val hasNonNullInclude = jsonAdapter?.hasNonNullInclude(classInfo, clazz) ?: false
+
         // Map Kotlin property metadata by name
         val kmProperties: Map<String, KmProperty> = kmClass?.properties?.associateBy { it.name } ?: emptyMap()
 
@@ -916,11 +919,16 @@ class ClassReference(
                 val jsonAdapterOptional = jsonAdapter?.isOptional(combinedAnnotations)
                 val optional = jsonAdapterOptional ?: hasDefault
 
-                val fieldType = toTsType(javaType, isNullable, false, typeParams)
+                // When @JsonInclude(NON_NULL) is set, nullable fields are omitted when null,
+                // so they become optional (undefined) in TS, not nullable
+                val finalOptional = if (hasNonNullInclude && isNullable) true else optional
+                val finalNullable = if (hasNonNullInclude && isNullable) false else isNullable
+
+                val fieldType = toTsType(javaType, finalNullable, false, typeParams)
                 fields[finalName] = TsField(
                     type = fieldType,
-                    optional = optional,
-                    nullable = isNullable
+                    optional = finalOptional,
+                    nullable = finalNullable
                 )
             }
         }
@@ -962,11 +970,16 @@ class ClassReference(
                 val isNullable = kmProp?.returnType?.isNullable ?: false
                 val javaType = getter.genericReturnType
 
-                val fieldType = toTsType(javaType, isNullable, false, typeParams)
+                // When @JsonInclude(NON_NULL) is set, nullable fields are omitted when null,
+                // so they become optional (undefined) in TS, not nullable
+                val finalOptional = if (hasNonNullInclude && isNullable) true else false
+                val finalNullable = if (hasNonNullInclude && isNullable) false else isNullable
+
+                val fieldType = toTsType(javaType, finalNullable, false, typeParams)
                 fields[finalName] = TsField(
                     type = fieldType,
-                    optional = false, // Getters don't have defaults
-                    nullable = isNullable
+                    optional = finalOptional,
+                    nullable = finalNullable
                 )
             }
         }
@@ -992,11 +1005,16 @@ class ClassReference(
                 val annotations = fieldInfo?.annotationInfo?.toList() ?: emptyList()
                 val isOptional = jsonAdapter?.isOptional(annotations) ?: false
 
-                val fieldType = toTsType(javaType, isNullable, false, typeParams)
+                // When @JsonInclude(NON_NULL) is set, nullable fields are omitted when null,
+                // so they become optional (undefined) in TS, not nullable
+                val finalOptional = if (hasNonNullInclude && isNullable) true else isOptional
+                val finalNullable = if (hasNonNullInclude && isNullable) false else isNullable
+
+                val fieldType = toTsType(javaType, finalNullable, false, typeParams)
                 fields[serializedName] = TsField(
                     type = fieldType,
-                    optional = isOptional,
-                    nullable = isNullable
+                    optional = finalOptional,
+                    nullable = finalNullable
                 )
             }
         }

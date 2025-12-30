@@ -325,6 +325,14 @@ class JacksonJsonAdapter : JsonAdapter {
         }
     }
 
+    override fun hasNonNullInclude(classInfo: ClassInfo?, clazz: Class<*>): Boolean {
+        val jsonIncludeAnn = AnnotationUtils.getAnnotation(classInfo, clazz, JsonInclude::class)
+            ?: return false
+
+        val includeValue = jsonIncludeAnn.getString("value") ?: return false
+        return includeValue == "NON_NULL"
+    }
+
     /**
      * Collects all classes in a sealed hierarchy, starting from the root sealed class/interface.
      *

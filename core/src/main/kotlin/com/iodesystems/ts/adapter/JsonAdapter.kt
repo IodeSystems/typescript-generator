@@ -209,6 +209,17 @@ interface JsonAdapter {
             annotations = f.annotationInfo?.toList() ?: emptyList()
         )
     }
+
+    /**
+     * Check if a class has @JsonInclude(JsonInclude.Include.NON_NULL) configured.
+     * When NON_NULL is set, null values are omitted from JSON, so nullable Kotlin fields
+     * should be typed as `field?: type | undefined` (not `| null`) in TypeScript.
+     *
+     * @param classInfo ClassGraph ClassInfo for the class
+     * @param clazz The Java Class object
+     * @return true if the class has NON_NULL inclusion policy
+     */
+    fun hasNonNullInclude(classInfo: ClassInfo?, clazz: Class<*>): Boolean = false
 }
 
 

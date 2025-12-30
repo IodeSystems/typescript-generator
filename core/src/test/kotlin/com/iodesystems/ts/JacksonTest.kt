@@ -1,6 +1,7 @@
 package com.iodesystems.ts
 
 import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.iodesystems.ts.lib.Asserts.assertContains
 import com.iodesystems.ts.lib.TestUtils.content
@@ -60,6 +61,13 @@ class JacksonApi {
         val loading: Boolean = false
     )
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    data class ResponseWithNonNull(
+        val timeout: Long?,
+        val message: String?,
+        val count: Int = 0
+    )
+
     @RequestMapping("go")
     fun get(): Payload = error("not used in tests")
 
@@ -68,6 +76,9 @@ class JacksonApi {
 
     @PostMapping("session")
     fun session(@RequestBody req: Session): Session = req
+
+    @PostMapping("nonnull")
+    fun nonnull(@RequestBody req: ResponseWithNonNull): ResponseWithNonNull = req
 }
 
 enum class MyEnum() {
@@ -166,6 +177,25 @@ class JacksonTest {
               |  }
             """.trimMargin("|"),
             why = "POST should use Session with request body and return it"
+        )
+    }
+
+    @Test
+    fun verifiesJsonIncludeNonNullConvertsNullableToOptional() {
+        val em = emitter(JacksonApi::class) { outputDirectory("./tmp") }
+        val content = em.ts().content()
+
+        // ResponseWithNonNull should have nullable fields as optional (not null)
+        // because @JsonInclude(NON_NULL) means null values are omitted from JSON
+        content.assertContains(
+            fragment = """
+                export type JacksonApiResponseWithNonNull = {
+                  count?: number | undefined
+                  message?: string | undefined
+                  timeout?: number | undefined
+                }
+            """.trimIndent(),
+            why = "@JsonInclude(NON_NULL) should convert nullable fields to optional (undefined) instead of null"
         )
     }
 }
