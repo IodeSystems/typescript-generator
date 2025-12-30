@@ -27,7 +27,7 @@ Add the plugin to your `build.gradle.kts` (root or module as appropriate):
 
 ```kotlin
 plugins {
-    id("com.iodesystems.typescript-generator") version "0.0.18"
+    id("com.iodesystems.typescript-generator") version "0.0.19-SNAPSHOT"
 }
 ```
 
