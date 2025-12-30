@@ -74,6 +74,16 @@ class Scanner(private val config: Config) {
                     cg.rejectPackages(*rejectPrefixes.toTypedArray())
                 } else cg
             }
+            .let { cg ->
+                if (config.include.isNotEmpty()) {
+                    cg.acceptClasses(*config.include.toTypedArray())
+                } else cg
+            }
+            .let { cg ->
+                if (config.exclude.isNotEmpty()) {
+                    cg.rejectClasses(*config.exclude.toTypedArray())
+                } else cg
+            }
             .scan()
     }
 }

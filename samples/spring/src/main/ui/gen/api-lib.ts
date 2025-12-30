@@ -17,7 +17,7 @@ export type AbortablePromise<T> = (() => void) & {
     onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
   ): AbortablePromise<T | TResult>;
   finally(onfinally?: (() => void) | undefined | null): AbortablePromise<T>;
-}
+} & Promise<T>
 
 export function abortable<T>(
   promise: Promise<T>,

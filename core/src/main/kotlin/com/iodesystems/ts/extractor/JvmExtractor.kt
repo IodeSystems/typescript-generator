@@ -114,7 +114,7 @@ data class JvmExtractor(
 
         // Process explicitly included types
         val classRef = ClassReference(config, scan, typeCache, jsonAdapter)
-        config.includeTypes.forEach { fqcn ->
+        config.include.forEach { fqcn ->
             try {
                 val classInfo = scan.getClassInfo(fqcn)
                 if (classInfo == null) {

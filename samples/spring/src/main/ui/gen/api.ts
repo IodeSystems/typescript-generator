@@ -1,6 +1,9 @@
 import type {Dayjs} from 'dayjs'
 import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
 import { EventApiCreate, EventApiCreateResponseUnion } from './api-types'
+/**
+ * Jvm {@link com.iodesystems.ts.sample.api.EventApi}
+ */
 export class EventApi {
   constructor(private opts: ApiOptions = {}) {}
   create(req: EventApiCreate): AbortablePromise<EventApiCreateResponseUnion> {
@@ -12,6 +15,9 @@ export class EventApi {
   }
 }
 import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiIsPrefixTest, SampleApiPing, SampleApiPingResponseUnion, SlugRefUnion } from './api-types'
+/**
+ * Jvm {@link com.iodesystems.ts.sample.api.SampleApi}
+ */
 export class SampleApi {
   constructor(private opts: ApiOptions = {}) {}
   add(req: SampleApiAdd): AbortablePromise<SampleApiAddResponseUnion> {

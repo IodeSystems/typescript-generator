@@ -18,7 +18,7 @@ data class Config(
     val cleanOutputDir: Boolean = false,
     val classPathUrls: List<String> = emptyList(),
     val setsAsArrays: Boolean = true,
-    val omitTypes: List<String> = listOf(
+    val exclude: List<String> = listOf(
         Class::class,
         kotlin.enums.EnumEntries::class,
     ).map { it.qualifiedName!! } +
@@ -29,7 +29,7 @@ data class Config(
                 "java.lang.Iterable",
                 "java.io.Serializable"
             ),
-    val mappedTypes: Map<String, String> = mapOf(
+    val mapType: Map<String, String> = mapOf(
         // Using JavaTimeModule from jackson-datatype-jsr310
         Duration::class.qualifiedName!! to "string",
         OffsetDateTime::class.qualifiedName!! to "string",
@@ -91,7 +91,7 @@ data class Config(
     // Keep default false to avoid overhead in normal runs.
     val diagnosticLogging: Boolean = false,
     // Fully-qualified class names to explicitly include as types (even if not referenced by API methods).
-    val includeTypes: List<String> = emptyList(),
+    val include: List<String> = emptyList(),
     // Jackson naming behavior options (mirrors MapperFeature settings)
     // AUTO_DETECT_IS_GETTERS: When true, boolean isX() getters are detected and "is" prefix is stripped.
     // E.g., isActive() -> "active" in JSON. Default true (matches Jackson default).
@@ -112,7 +112,7 @@ data class Config(
             val props = listOfNotNull(
                 if (cleanOutputDir) "cleanOutputDir=$cleanOutputDir" else null,
                 if (classPathUrls.isNotEmpty()) "classPathUrls=$classPathUrls" else null,
-                if (mappedTypes.isNotEmpty()) "mappedTypes=$mappedTypes" else null,
+                if (mapType.isNotEmpty()) "mappedTypes=$mapType" else null,
                 if (alias.isNotEmpty()) "alias=$alias" else null,
                 if (outputDirectory != "./") "outputDirectory='$outputDirectory'" else null,
                 if (optionalAnnotations.isNotEmpty()) "optionalAnnotations=$optionalAnnotations" else null,
@@ -126,7 +126,7 @@ data class Config(
                 if (externalImportLines.isNotEmpty()) "externalImportLines=$externalImportLines" else null,
                 if (headerLines.isNotEmpty()) "headerLines=$headerLines" else null,
                 if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null,
-                if (includeTypes.isNotEmpty()) "includeTypes=$includeTypes" else null
+                if (include.isNotEmpty()) "includeTypes=$include" else null
             )
             append(props.joinToString(", "))
             append(")")
@@ -154,7 +154,7 @@ data class Config(
     private val regexCache = mutableMapOf<String, Regex>()
 
     fun includeType(fqcn: String): Boolean {
-        return !omitTypes.any { fqcn.startsWith(it) }
+        return !exclude.any { fqcn.startsWith(it) }
     }
 
     fun includeApi(name: String): Boolean {
@@ -212,12 +212,12 @@ data class Config(
     ) {
         /** Replace the list of FQCN prefixes to exclude from type emission. */
         fun exclude(vararg fqns: String): Builder {
-            config = config.copy(omitTypes = fqns.toList()); return this
+            config = config.copy(exclude = fqns.toList()); return this
         }
 
         /** Replace the list of class types to exclude from type emission. */
         fun exclude(vararg classes: KClass<*>): Builder {
-            config = config.copy(omitTypes = classes.map { it.java.name }); return this
+            config = config.copy(exclude = classes.map { it.java.name }); return this
         }
 
         /** Treat Kotlin/Java `Set` like an array in TypeScript (default true). */
@@ -249,12 +249,12 @@ data class Config(
 
         /** Add/override multiple JVM→TS type mappings. */
         fun mapType(map: Map<String, String>): Builder {
-            config = config.copy(mappedTypes = config.mappedTypes + map); return this
+            config = config.copy(mapType = config.mapType + map); return this
         }
 
         /** Map a single JVM class to a TS type identifier (e.g., `Dayjs | string`). */
         fun mapType(klass: KClass<*>, tsIdentifier: String): Builder {
-            config = config.copy(mappedTypes = config.mappedTypes + (klass.java.name to tsIdentifier)); return this
+            config = config.copy(mapType = config.mapType + (klass.java.name to tsIdentifier)); return this
         }
 
         /** Set type name aliases: FQCN → TypeScript name (bypasses typeNameReplacements). */
@@ -281,13 +281,13 @@ data class Config(
 
         /** Explicitly include types by FQCN (even if not referenced by API methods). */
         fun include(vararg fqns: String): Builder {
-            config = config.copy(includeTypes = fqns.toList()); return this
+            config = config.copy(include = fqns.toList()); return this
         }
 
         /** Explicitly include types by KClass (even if not referenced by API methods). */
         inline fun <reified T> include(): Builder = include(T::class)
         fun include(vararg classes: KClass<*>): Builder {
-            config = config.copy(includeTypes = classes.map { it.java.name })
+            config = config.copy(include = classes.map { it.java.name })
             return this
         }
 
