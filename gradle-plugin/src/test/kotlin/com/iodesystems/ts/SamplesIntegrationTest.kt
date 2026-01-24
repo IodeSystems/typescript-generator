@@ -54,7 +54,7 @@ class SamplesIntegrationTest {
             "./gradlew",
             mvnLocal,
             "generateTypescript",
-            "--no-configuration-cache"
+            "--configuration-cache"
         ).also { res ->
             assertEquals(0, res.code, "generateTypescript failed. Output:\n${res.output}")
         }
