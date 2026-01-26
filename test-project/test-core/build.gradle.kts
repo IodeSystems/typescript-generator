@@ -10,7 +10,7 @@ dependencies {
     implementation("org.springframework:spring-web:7.0.2")
 
     // Jackson for JSON handling
-    implementation("com.fasterxml.jackson.core:jackson-annotations:2.20")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.21")
 }
 
 // Output the runtime classpath for ExternalClassPathTest in core module
