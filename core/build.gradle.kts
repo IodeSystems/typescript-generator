@@ -5,6 +5,7 @@ plugins {
 
 licenseReport {
     outputDir = "$rootDir/build/reports/licenses"
+    allowedLicensesFile = file("$rootDir/config/allowed-licenses.json")
     renderers = arrayOf(
         com.github.jk1.license.render.JsonReportRenderer(),
         com.github.jk1.license.render.CsvReportRenderer(),
