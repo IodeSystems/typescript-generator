@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+# License Checker for Gradle dependencies
+# Generates a license report and checks for problematic licenses
+
+set -e
+
+# Configuration
+REPORT_DIR="build/reports/licenses"
+
+# Problematic licenses that require review
+# Note: Order matters - more specific patterns first
+COPYLEFT_LICENSES=(
+    "AGPL|Affero General Public License"
+    "LGPL|Lesser General Public License"
+    "^GPL[^L]|^General Public License"
+    "CC-BY-SA"
+    "MPL|Mozilla Public License"
+    "EPL|Eclipse Public License"
+    "CDDL|Common Development and Distribution License"
+)
+
+echo "Checking licenses..."
+echo ""
+
+# Run Gradle license report
+echo "Generating license report..."
+./gradlew :core:generateLicenseReport
+
+if [ ! -d "$REPORT_DIR" ]; then
+    echo "Error: License report directory not found at $REPORT_DIR"
+    exit 1
+fi
+
+echo ""
+
+# Track issues
+HAS_PROBLEMS=false
+
+# Check JSON report if available
+JSON_REPORT="$REPORT_DIR/index.json"
+if [ -f "$JSON_REPORT" ] && command -v jq &> /dev/null; then
+    echo "=== License Summary ==="
+
+    # Extract unique licenses
+    jq -r '.dependencies[].moduleLicense // "Unknown"' "$JSON_REPORT" | sort | uniq -c | sort -rn | while read count license; do
+        echo "  $count $license"
+    done
+
+    echo ""
+
+    # Check for copyleft licenses
+    echo "Checking for copyleft licenses..."
+    for copyleft in "${COPYLEFT_LICENSES[@]}"; do
+        matches=$(jq -r --arg lic "$copyleft" '.dependencies[] | select(.moduleLicense | test($lic; "i")) | "\(.moduleName):\(.moduleVersion)"' "$JSON_REPORT" 2>/dev/null || echo "")
+        if [ -n "$matches" ]; then
+            HAS_PROBLEMS=true
+            echo "  Warning: $copyleft license found in:"
+            echo "$matches" | while read -r dep; do
+                license=$(jq -r --arg dep "$dep" '.dependencies[] | select(("\(.moduleName):\(.moduleVersion)") == $dep) | .moduleLicense' "$JSON_REPORT" | head -1)
+                echo "    - $dep ($license)"
+            done
+        fi
+    done
+
+    if ! $HAS_PROBLEMS; then
+        echo "  No copyleft licenses detected"
+    fi
+elif [ -f "$JSON_REPORT" ]; then
+    echo "Warning: jq not found, skipping license analysis"
+    echo "Install jq to enable license checking: brew install jq"
+fi
+
+echo ""
+echo "Full reports available at:"
+echo "  JSON: $REPORT_DIR/index.json"
+echo "  CSV:  $REPORT_DIR/licenses.csv"
+echo "  Text: $REPORT_DIR/THIRD-PARTY-NOTICES.txt"
+
+if $HAS_PROBLEMS; then
+    echo ""
+    echo "Warning: Potential copyleft licenses detected - review required"
+    exit 1
+else
+    echo ""
+    echo "License check completed successfully"
+    exit 0
+fi
