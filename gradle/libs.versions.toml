@@ -12,7 +12,7 @@ gradle-kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", v
 gradle-nexus-publish-plugin = "io.github.gradle-nexus.publish-plugin:io.github.gradle-nexus.publish-plugin.gradle.plugin:2.0.0"
 gradle-node-plugin = "com.github.node-gradle.node:com.github.node-gradle.node.gradle.plugin:7.1.0"
 gradle-plugin-plugin = "com.gradle.plugin-publish:com.gradle.plugin-publish.gradle.plugin:2.0.0"
-jackson-databind = "tools.jackson.core:jackson-databind:3.0.3"
+jackson-databind = "tools.jackson.core:jackson-databind:3.0.4"
 kotlinx-metadata-jvm = "org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.9.0"
 logback = "ch.qos.logback:logback-classic:1.5.25"
 spring-webmvc = "org.springframework:spring-webmvc:7.0.2"
