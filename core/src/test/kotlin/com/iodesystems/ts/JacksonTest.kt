@@ -57,7 +57,7 @@ class JacksonApi {
     )
 
     data class SessionBare(
-        @JsonProperty(required = true)
+        @field:JsonProperty(required = true)
         val loading: Boolean = false
     )
 

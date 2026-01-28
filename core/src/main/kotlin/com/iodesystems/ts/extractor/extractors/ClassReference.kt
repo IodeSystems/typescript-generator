@@ -676,7 +676,6 @@ class ClassReference(
         val superClass = clazz.superclass
         if (superClass != null &&
             superClass != Any::class.java &&
-            superClass != Object::class.java &&
             config.includeType(superClass.name)) {
             inheritedFields.addAll(getPropertyNames(superClass))
         }
@@ -709,7 +708,6 @@ class ClassReference(
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
             method.declaringClass != Any::class.java &&
-            method.declaringClass != Object::class.java &&
             (
                 (method.name.startsWith("get") && method.name.length > 3) ||
                 (method.name.startsWith("is") && method.name.length > 2)
@@ -724,9 +722,7 @@ class ClassReference(
         if (kmClass != null) {
             kmClass.properties.forEach { prop ->
                 // Find the getter for this property to get the correct JSON name
-                val getterName = if (prop.name.startsWith("is") && prop.returnType.classifier?.let {
-                        (it as? kotlinx.metadata.KmClassifier.Class)?.name
-                    } in listOf("kotlin/Boolean", "java/lang/Boolean")) {
+                val getterName = if (prop.name.startsWith("is") && (prop.returnType.classifier as? kotlinx.metadata.KmClassifier.Class)?.name in listOf("kotlin/Boolean", "java/lang/Boolean")) {
                     prop.name // Boolean is* properties use isX() getter
                 } else if (prop.name.startsWith("is")) {
                     prop.name // Kotlin generates isX() for all is* properties
@@ -795,7 +791,6 @@ class ClassReference(
         val rawSuperclass = if (genericSuperclass is ParameterizedType) genericSuperclass.rawType as? Class<*> else genericSuperclass as? Class<*>
         if (rawSuperclass != null &&
             rawSuperclass != Any::class.java &&
-            rawSuperclass != Object::class.java &&
             config.includeType(rawSuperclass.name)) {
             // Check for self-referential types
             if (genericSuperclass is ParameterizedType) {
@@ -939,7 +934,6 @@ class ClassReference(
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
             method.declaringClass != Any::class.java &&
-            method.declaringClass != Object::class.java &&
             (
                 (method.name.startsWith("get") && method.name.length > 3) ||
                 (method.name.startsWith("is") && method.name.length > 2)

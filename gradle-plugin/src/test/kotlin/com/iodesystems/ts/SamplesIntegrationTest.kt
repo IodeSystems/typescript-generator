@@ -88,10 +88,11 @@ class SamplesIntegrationTest {
         val typesContent = typesFile.readText()
 
         // RefUnion should contain RefOrg, RefBu, RefLoc - NOT SlugRef types
-        val refUnionLine = typesContent.lines().find { it.contains("RefUnion =") && !it.contains("SlugRefUnion") }
-        assertTrue(refUnionLine != null, "RefUnion should be defined. Types:\n$typesContent")
+        val refUnionLine = requireNotNull(
+            typesContent.lines().find { it.contains("RefUnion =") && !it.contains("SlugRefUnion") }
+        ) { "RefUnion should be defined. Types:\n$typesContent" }
         assertTrue(
-            refUnionLine!!.contains("RefOrg") && refUnionLine.contains("RefBu") && refUnionLine.contains("RefLoc"),
+            refUnionLine.contains("RefOrg") && refUnionLine.contains("RefBu") && refUnionLine.contains("RefLoc"),
             "RefUnion should contain RefOrg, RefBu, RefLoc. Got: $refUnionLine"
         )
         assertTrue(
@@ -100,10 +101,11 @@ class SamplesIntegrationTest {
         )
 
         // SlugRefUnion should contain SlugRefOrg, SlugRefBu, SlugRefLoc
-        val slugRefUnionLine = typesContent.lines().find { it.contains("SlugRefUnion =") }
-        assertTrue(slugRefUnionLine != null, "SlugRefUnion should be defined")
+        val slugRefUnionLine = requireNotNull(
+            typesContent.lines().find { it.contains("SlugRefUnion =") }
+        ) { "SlugRefUnion should be defined" }
         assertTrue(
-            slugRefUnionLine!!.contains("SlugRefOrg") && slugRefUnionLine.contains("SlugRefBu") && slugRefUnionLine.contains("SlugRefLoc"),
+            slugRefUnionLine.contains("SlugRefOrg") && slugRefUnionLine.contains("SlugRefBu") && slugRefUnionLine.contains("SlugRefLoc"),
             "SlugRefUnion should contain SlugRefOrg, SlugRefBu, SlugRefLoc. Got: $slugRefUnionLine"
         )
     }

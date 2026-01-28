@@ -147,12 +147,12 @@ data class JvmMethod(
 
             // Determine the type (STRING or NUMBER)
             val paramType = when (genericType) {
-                java.lang.Long::class.java, Long::class.javaPrimitiveType,
-                java.lang.Integer::class.java, Int::class.javaPrimitiveType,
-                java.lang.Short::class.java, Short::class.javaPrimitiveType,
-                java.lang.Byte::class.java, Byte::class.javaPrimitiveType,
-                java.lang.Double::class.java, Double::class.javaPrimitiveType,
-                java.lang.Float::class.java, Float::class.javaPrimitiveType -> ApiMethod.PathParam.Type.NUMBER
+                Long::class.javaObjectType, Long::class.javaPrimitiveType,
+                Int::class.javaObjectType, Int::class.javaPrimitiveType,
+                Short::class.javaObjectType, Short::class.javaPrimitiveType,
+                Byte::class.javaObjectType, Byte::class.javaPrimitiveType,
+                Double::class.javaObjectType, Double::class.javaPrimitiveType,
+                Float::class.javaObjectType, Float::class.javaPrimitiveType -> ApiMethod.PathParam.Type.NUMBER
 
                 else -> ApiMethod.PathParam.Type.STRING
             }

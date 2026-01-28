@@ -361,7 +361,7 @@ class JacksonJsonAdapter : JsonAdapter {
             // filter out classes like Ref.Bu when checking Ref.Org -> Ref).
             val superTypes = clazz.interfaces.toList() + listOfNotNull(clazz.superclass)
             return superTypes
-                .filter { superType -> superType != rootClass && superType != Any::class.java && superType != Object::class.java }
+                .filter { superType -> superType != rootClass && superType != Any::class.java }
                 .any { superType -> AnnotationUtils.hasDirectAnnotation(superType, JsonTypeInfo::class) }
         }
 

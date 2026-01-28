@@ -100,7 +100,7 @@ data class JvmExtractor(
                     queryParamsType = methodType.queryParametersType?.let { methodCtx.registerType(it) },
                     pathReplacements = methodType.pathParameters
                 ).also {
-                    it.types().forEach { t -> t?.let { nt -> methodCtx.addMethodRef(nt) } }
+                    it.types().filterNotNull().forEach { nt -> methodCtx.addMethodRef(nt) }
                 }
             }
 
