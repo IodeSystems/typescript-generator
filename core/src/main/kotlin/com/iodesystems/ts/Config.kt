@@ -90,6 +90,12 @@ data class Config(
     // Enables extra diagnostic logs from heavy phases (type registration, queue sizes, memory snapshots).
     // Keep default false to avoid overhead in normal runs.
     val diagnosticLogging: Boolean = false,
+    // When true, emits React helper files: useApi hook (.ts) and ApiProvider component (.tsx).
+    val emitReactHelpers: Boolean = false,
+    // File name for the useApi hook (only used when emitReactHelpers is true).
+    val reactHookFileName: String = "use-api.ts",
+    // File name for the ApiProvider component (only used when emitReactHelpers is true).
+    val reactProviderFileName: String = "api-provider.tsx",
     // Fully-qualified class names to explicitly include as types (even if not referenced by API methods).
     val include: List<String> = emptyList(),
     // Jackson naming behavior options (mirrors MapperFeature settings)
@@ -126,6 +132,9 @@ data class Config(
                 if (externalImportLines.isNotEmpty()) "externalImportLines=$externalImportLines" else null,
                 if (headerLines.isNotEmpty()) "headerLines=$headerLines" else null,
                 if (diagnosticLogging) "diagnosticLogging=$diagnosticLogging" else null,
+                if (emitReactHelpers) "emitReactHelpers=$emitReactHelpers" else null,
+                if (emitReactHelpers && reactHookFileName != "use-api.ts") "reactHookFileName='$reactHookFileName'" else null,
+                if (emitReactHelpers && reactProviderFileName != "api-provider.tsx") "reactProviderFileName='$reactProviderFileName'" else null,
                 if (include.isNotEmpty()) "includeTypes=$include" else null
             )
             append(props.joinToString(", "))
@@ -382,6 +391,19 @@ data class Config(
         /** Whether to use strict JavaBeans naming (getURL -> URL). Default false (Jackson default: getURL -> url). */
         fun useStdBeanNaming(enabled: Boolean): Builder {
             config = config.copy(useStdBeanNaming = enabled); return this
+        }
+
+        /** Enable emitting React helper files: useApi hook (.ts) and ApiProvider component (.tsx). */
+        fun emitReactHelpers(
+            hookFileName: String = "use-api.ts",
+            providerFileName: String = "api-provider.tsx"
+        ): Builder {
+            config = config.copy(
+                emitReactHelpers = true,
+                reactHookFileName = hookFileName,
+                reactProviderFileName = providerFileName
+            )
+            return this
         }
     }
 

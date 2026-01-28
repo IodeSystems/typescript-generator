@@ -17,6 +17,7 @@ It’s designed to work well with Spring Boot REST controllers: it scans your co
 - Customizable type mappings and name replacements
 - Optional/nullable handling via annotations
 - Flexible output layout: single file or split into lib/api/types files and/or grouped by controller
+- React integration with `useApi` hook and `ApiProvider` component
 - Gradle plugin integration and programmatic API
 
 ## Usage
@@ -193,6 +194,7 @@ All configuration is done through the `Config.Builder` class. Here are the avail
 - `emitTypesAsSeparateFile(name: String = "api-types.ts")` — Emit types to a separate file
 - `typesFileName(name: String)` — Set the shared types file name (used when grouping or splitting types)
 - `groupApis(grouping: Map<String, List<String>>)` — Group specific controllers into named API files. Key = output TS filename, value = controller FQCNs
+- `emitReactHelpers(hookFileName: String = "use-api.ts", providerFileName: String = "api-provider.tsx")` — Emit React helper files for easy integration with React apps
 
 ### Imports & Headers
 
@@ -210,6 +212,62 @@ All configuration is done through the `Config.Builder` class. Here are the avail
 ## Spring Boot Support
 
 Out of the box, the generator looks for Spring MVC/Web annotations and extracts controllers, methods, parameters, and models. Use `packageScan` and `packageIgnore` to control the scope, or `includeApi` to target specific controller classes.
+
+## React Integration
+
+The generator can emit React helper files for easy integration with React applications. Enable with `emitReactHelpers()`:
+
+```kotlin
+typescriptGenerator {
+    config {
+        outputDirectory("src/main/ui/generated")
+        packageScan("com.example.api")
+        emitLibAsSeparateFile()
+        emitReactHelpers() // Generates use-api.ts and api-provider.tsx
+    }
+}
+```
+
+This generates two files:
+- `use-api.ts` — Pure TypeScript hook (no JSX, works with HMR)
+- `api-provider.tsx` — React provider component (JSX)
+
+### Usage in React
+
+Wrap your app with `ApiProvider`:
+
+```tsx
+import { ApiProvider } from './generated/api-provider'
+import { App } from './App'
+
+function Root() {
+  return (
+    <ApiProvider options={{ baseUrl: '/api' }}>
+      <App />
+    </ApiProvider>
+  )
+}
+```
+
+Use the `useApi` hook to get typed API clients:
+
+```tsx
+import { useApi } from './generated/use-api'
+import { UserController } from './generated/api'
+
+function UserList() {
+  const api = useApi(UserController)
+  const [users, setUsers] = useState([])
+
+  useEffect(() => {
+    api.getUsers().then(setUsers)
+  }, [api])
+
+  return <ul>{users.map(u => <li key={u.id}>{u.name}</li>)}</ul>
+}
+```
+
+The hook caches API instances per component lifecycle and recreates them when `ApiOptions` change.
 
 ## Samples
 

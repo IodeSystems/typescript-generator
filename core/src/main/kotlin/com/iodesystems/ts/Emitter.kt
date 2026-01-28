@@ -124,6 +124,77 @@ class Emitter(
         }
         """.trimIndent()
 
+        /** Pure TypeScript hook file - no JSX */
+        fun reactHook(libImportPath: String): String = """
+        import { createContext, useContext, useMemo } from 'react'
+        import { ApiOptions } from '$libImportPath'
+
+        // Re-export ApiOptions so provider can import from this file
+        export { ApiOptions }
+
+        // Type for API class constructors
+        export type ApiType<T> = new (opts: ApiOptions) => T
+
+        // Context for API options - exported so provider can use it
+        export const ApiContext = createContext<ApiOptions>({})
+
+        // Bind all methods of an object to itself
+        function bind<T extends object>(obj: T): T {
+          const proto = Object.getPrototypeOf(obj)
+          for (const key of Object.getOwnPropertyNames(proto)) {
+            const val = (obj as any)[key]
+            if (typeof val === 'function' && key !== 'constructor') {
+              (obj as any)[key] = val.bind(obj)
+            }
+          }
+          return obj
+        }
+
+        /**
+         * React hook to get a typed API client instance.
+         * The instance is cached for the component's lifecycle and recreated when ApiOptions change.
+         *
+         * @example
+         * const api = useApi(MyApi)
+         * api.someMethod({ ... })
+         */
+        export function useApi<T>(ctor: ApiType<T>): T {
+          const apiOptions = useContext(ApiContext)
+          const cache = useMemo(() => new Map<string, unknown>(), [apiOptions])
+          const existing = cache.get(ctor.name)
+          if (existing) return existing as T
+          const api = bind(new ctor(apiOptions))
+          cache.set(ctor.name, api)
+          return api
+        }
+        """.trimIndent()
+
+        /** TSX provider component file - requires JSX */
+        fun reactProvider(hookImportPath: String): String = """
+        import { ReactNode, useMemo } from 'react'
+        import { ApiContext, ApiOptions } from '$hookImportPath'
+
+        export interface ApiProviderProps {
+          children: ReactNode
+          options?: ApiOptions
+        }
+
+        /**
+         * Provider component that supplies API options to all child components.
+         * Wrap your app or a subtree with this to configure API behavior.
+         *
+         * @example
+         * const apiOptions = useMemo(() => ({ baseUrl: '/api' }), [])
+         * <ApiProvider options={apiOptions}>
+         *   <App />
+         * </ApiProvider>
+         */
+        export function ApiProvider({ children, options }: ApiProviderProps) {
+          const value = useMemo(() => options ?? {}, [options])
+          return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>
+        }
+        """.trimIndent()
+
         fun fieldName(name: String): String {
             if (name.isEmpty()) error("Name must not be empty")
             val first = name[0]
@@ -488,6 +559,22 @@ class Emitter(
             }
             o.write("}\n")
         }
+
+        // Emit React helper files if enabled
+        if (config.emitReactHelpers) {
+            // Emit hook file (.ts - pure TypeScript, no JSX)
+            val hookFile = createWriteContext(config.reactHookFileName)
+            val libImportPath = "./" + lib.file.nameWithoutExtension
+            hookFile.write(reactHook(libImportPath))
+            hookFile.write("\n")
+
+            // Emit provider file (.tsx - requires JSX)
+            val providerFile = createWriteContext(config.reactProviderFileName)
+            val hookImportPath = "./" + hookFile.file.nameWithoutExtension
+            providerFile.write(reactProvider(hookImportPath))
+            providerFile.write("\n")
+        }
+
         return Output(writeContexts.values.toList())
     }
 
