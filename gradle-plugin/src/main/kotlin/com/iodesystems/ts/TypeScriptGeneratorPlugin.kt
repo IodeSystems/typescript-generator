@@ -109,6 +109,15 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
         abstract val useStdBeanNaming: Property<Boolean>
 
         @get:Input
+        abstract val emitReactHelpers: Property<Boolean>
+
+        @get:Input
+        abstract val reactHookFileName: Property<String>
+
+        @get:Input
+        abstract val reactProviderFileName: Property<String>
+
+        @get:Input
         abstract val classPathUrls: ListProperty<String>
 
         @get:InputFiles
@@ -137,6 +146,9 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
                 externalImportLines = externalImportLines.get(),
                 headerLines = headerLines.get(),
                 diagnosticLogging = diagnosticLogging.get(),
+                emitReactHelpers = emitReactHelpers.get(),
+                reactHookFileName = reactHookFileName.get(),
+                reactProviderFileName = reactProviderFileName.get(),
                 include = include.get(),
                 autoDetectIsGetters = autoDetectIsGetters.get(),
                 allowIsGettersForNonBoolean = allowIsGettersForNonBoolean.get(),
@@ -181,6 +193,9 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
             t.externalImportLines.convention(configProvider.map { it.externalImportLines })
             t.headerLines.convention(configProvider.map { it.headerLines })
             t.diagnosticLogging.convention(configProvider.map { it.diagnosticLogging })
+            t.emitReactHelpers.convention(configProvider.map { it.emitReactHelpers })
+            t.reactHookFileName.convention(configProvider.map { it.reactHookFileName })
+            t.reactProviderFileName.convention(configProvider.map { it.reactProviderFileName })
             t.include.convention(configProvider.map { it.include })
             t.autoDetectIsGetters.convention(configProvider.map { it.autoDetectIsGetters })
             t.allowIsGettersForNonBoolean.convention(configProvider.map { it.allowIsGettersForNonBoolean })

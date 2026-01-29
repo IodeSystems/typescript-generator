@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.logback)
     testImplementation(kotlin("test"))
+    testImplementation(kotlin("reflect"))
     testImplementation(gradleTestKit())
 }
 
