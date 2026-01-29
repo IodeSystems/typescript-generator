@@ -44,11 +44,11 @@ class ReactHookTest {
             why = "Hook should import React dependencies"
         )
         hookContent.assertContains(
-            fragment = "import { ApiOptions } from './api-lib'",
+            fragment = "import type { ApiOptions } from './api-lib'",
             why = "Hook should import ApiOptions from lib file"
         )
         hookContent.assertContains(
-            fragment = "export { ApiOptions }",
+            fragment = "export type { ApiOptions }",
             why = "Hook should re-export ApiOptions"
         )
         hookContent.assertContains(
@@ -60,7 +60,7 @@ class ReactHookTest {
             why = "Hook should export ApiContext"
         )
         hookContent.assertContains(
-            fragment = "export function useApi<T>",
+            fragment = "export function useApi<T extends object>",
             why = "Hook should export useApi hook"
         )
         hookContent.assertNotContains(
@@ -136,7 +136,7 @@ class ReactHookTest {
 
         val hookContent = hookFile.readText()
         hookContent.assertContains(
-            fragment = "import { ApiOptions } from './api'",
+            fragment = "import type { ApiOptions } from './api'",
             why = "Hook should import from api.ts when lib is not separate"
         )
     }

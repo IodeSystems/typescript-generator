@@ -1,9 +1,9 @@
 import type {Dayjs} from 'dayjs'
 import { createContext, useContext, useMemo } from 'react'
-import { ApiOptions } from './api-lib'
+import type { ApiOptions } from './api-lib'
 
 // Re-export ApiOptions so provider can import from this file
-export { ApiOptions }
+export type { ApiOptions }
 
 // Type for API class constructors
 export type ApiType<T> = new (opts: ApiOptions) => T
@@ -31,7 +31,7 @@ function bind<T extends object>(obj: T): T {
  * const api = useApi(MyApi)
  * api.someMethod({ ... })
  */
-export function useApi<T>(ctor: ApiType<T>): T {
+export function useApi<T extends object>(ctor: ApiType<T>): T {
   const apiOptions = useContext(ApiContext)
   const cache = useMemo(() => new Map<string, unknown>(), [apiOptions])
   const existing = cache.get(ctor.name)
