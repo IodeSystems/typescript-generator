@@ -1,22 +1,13 @@
-import {useCallback, useMemo, useState} from "react"
+import {useCallback, useState} from "react"
 import {SampleApi} from "./gen/api"
-
-function getApiBaseUrl(): string | undefined {
-  try {
-    const url = new URL(window.location.href)
-    const api = url.searchParams.get("api")
-    return api ?? undefined
-  } catch {
-    return undefined
-  }
-}
+import {useApi} from "./gen/use-api"
 
 export default function App() {
   const [result, setResult] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>("")
 
-  const api = useMemo(() => new SampleApi({ baseUrl: getApiBaseUrl() }), [])
+  const api = useApi(SampleApi)
 
   const onPing = useCallback(async () => {
     setLoading(true)

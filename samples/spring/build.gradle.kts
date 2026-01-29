@@ -18,6 +18,7 @@ typescriptGenerator {
         packageScan("com.iodesystems.ts.sample.api")
         emitLibAsSeparateFile("api-lib.ts")
         emitTypesAsSeparateFile("api-types.ts")
+        emitReactHelpers()
         outputDirectory("src/main/ui/gen")
         externalImportLines(
             mapOf(
