@@ -32,7 +32,10 @@ data class Config(
     val mapType: Map<String, String> = mapOf(
         // Using JavaTimeModule from jackson-datatype-jsr310
         Duration::class.qualifiedName!! to "string",
+        java.time.Instant::class.qualifiedName!! to "string",
         OffsetDateTime::class.qualifiedName!! to "string",
+        java.time.ZonedDateTime::class.qualifiedName!! to "string",
+        java.time.LocalDateTime::class.qualifiedName!! to "string",
         LocalDate::class.qualifiedName!! to "string",
         LocalTime::class.qualifiedName!! to "string",
         // Optional
