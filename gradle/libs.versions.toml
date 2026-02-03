@@ -9,7 +9,7 @@ asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "org-ow2-asm" }
 classgraph = "io.github.classgraph:classgraph:4.8.184"
 gradle-dokka-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "org-jetbrains-dokka" }
 gradle-kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
-gradle-license-report-plugin = "com.github.jk1.dependency-license-report:com.github.jk1.dependency-license-report.gradle.plugin:2.9"
+gradle-license-report-plugin = "com.github.jk1.dependency-license-report:com.github.jk1.dependency-license-report.gradle.plugin:3.0.1"
 gradle-nexus-publish-plugin = "io.github.gradle-nexus.publish-plugin:io.github.gradle-nexus.publish-plugin.gradle.plugin:2.0.0"
 gradle-node-plugin = "com.github.node-gradle.node:com.github.node-gradle.node.gradle.plugin:7.1.0"
 gradle-plugin-plugin = "com.gradle.plugin-publish:com.gradle.plugin-publish.gradle.plugin:2.0.0"
