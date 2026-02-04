@@ -381,6 +381,7 @@ data class Config(
             return headerLines(*lines.toTypedArray())
         }
 
+
         /** Whether to detect boolean isX() getters and strip "is" prefix. Default true (Jackson default). */
         fun autoDetectIsGetters(enabled: Boolean): Builder {
             config = config.copy(autoDetectIsGetters = enabled); return this

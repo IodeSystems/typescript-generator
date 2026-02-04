@@ -214,7 +214,7 @@ class Emitter(
             return if (needsQuotes) "\"$name\"" else name
         }
 
-        fun tsNameWithGenericsResolved(type: TsType): String {
+        fun tsNameWithGenericsResolved(type: TsType, emptyGenericStubs: Set<String> = emptySet()): String {
             val name = type.name
             val generics = type.generics
             if (generics.isEmpty()) return name
@@ -227,7 +227,7 @@ class Emitter(
                 // No angle brackets - substitute generics directly in the name
                 var result = name
                 for ((paramName, paramType) in generics) {
-                    val resolved = tsNameWithGenericsResolved(paramType)
+                    val resolved = tsNameWithGenericsResolved(paramType, emptyGenericStubs)
                     val withNullability = if (paramType.nullable) "$resolved | null" else resolved
                     // Replace the type parameter name with its resolved type
                     // Use word boundary matching to avoid replacing partial matches
@@ -237,6 +237,9 @@ class Emitter(
             }
 
             val base = name.take(lt)
+            // Empty generic stubs have no fields/intersections — generics are unused, drop them
+            if (base in emptyGenericStubs) return base
+
             val genericSection = name.substring(lt + 1, gt)
 
             fun splitTopLevel(s: String): List<String> {
@@ -273,7 +276,7 @@ class Emitter(
                 val arg = rawArg.trim()
                 val mapped = generics[arg]
                 if (mapped != null) {
-                    val resolved = tsNameWithGenericsResolved(mapped)
+                    val resolved = tsNameWithGenericsResolved(mapped, emptyGenericStubs)
                     if (mapped.nullable) "$resolved | null" else resolved
                 } else arg
             }
@@ -284,16 +287,40 @@ class Emitter(
 
     class WriteContext(
         val file: File,
+        val header: StringBuilder = StringBuilder(),
         val content: StringBuilder = StringBuilder(),
         val ownedTypes: MutableSet<String> = mutableSetOf(),
         val alreadyImported: MutableSet<String> = mutableSetOf(),
+        val deferredImports: MutableList<Pair<String, String>> = mutableListOf(),
     ) {
         fun write(string: String) {
             content.append(string)
         }
 
+        fun writeHeader(string: String) {
+            header.append(string)
+        }
+
+        /** Queue an import line that will only be emitted if [name] appears in the final content. */
+        fun deferImport(name: String, importLine: String) {
+            deferredImports.add(name to importLine)
+        }
+
         fun importFrom(other: WriteContext): String {
             return "./" + other.file.relativeTo(file.parentFile)
+        }
+
+        fun resolvedContent(): String {
+            val sb = StringBuilder()
+            sb.append(header)
+            for ((name, importLine) in deferredImports) {
+                if (name in content) {
+                    sb.append(importLine)
+                    if (!importLine.endsWith("\n")) sb.append("\n")
+                }
+            }
+            sb.append(content)
+            return sb.toString()
         }
     }
 
@@ -306,7 +333,7 @@ class Emitter(
                 if (it.file.exists()) it.file.delete()
             }
             files.forEach { file ->
-                file.file.writeText(file.content.toString())
+                file.file.writeText(file.resolvedContent())
             }
         }
     }
@@ -331,12 +358,12 @@ class Emitter(
                 val ctx = WriteContext(outputDir.resolve(file))
                 // Write configured header lines at the top of every generated file
                 config.headerLines.forEach { line ->
-                    ctx.write(line)
-                    if (!line.endsWith("\n")) ctx.write("\n")
+                    ctx.writeHeader(line)
+                    if (!line.endsWith("\n")) ctx.writeHeader("\n")
                 }
                 if (!isLibExternal || file != libFile) {
-                    config.externalImportLines.forEach { (_, line) ->
-                        ctx.write(line + "\n")
+                    config.externalImportLines.forEach { (name, line) ->
+                        ctx.deferImport(name, line)
                     }
                 }
                 ctx
@@ -361,6 +388,20 @@ class Emitter(
         lib.write(lib())
         lib.write("\n")
 
+        // Identify empty generic stub types: Object types with generics but no fields and no intersections.
+        // Their generic params are unused, so we strip them from declarations and references.
+        val emptyGenericStubs = extraction.types.asSequence()
+            .filterIsInstance<TsType.Object>()
+            .filter { '<' in it.name && it.fields.isEmpty() && it.intersections.isEmpty() }
+            .map { it.name.substringBefore('<') }
+            .toSet()
+
+        fun resolveType(type: TsType) = tsNameWithGenericsResolved(type, emptyGenericStubs)
+        fun stripGenerics(name: String): String {
+            val lt = name.indexOf('<')
+            return if (lt != -1) name.substring(0, lt) else name
+        }
+
         extraction.types.sortedBy { it.name }.forEach { type ->
             val o = writeContextForType()
             o.ownedTypes.add(type.name)
@@ -380,7 +421,8 @@ class Emitter(
             }
             o.write(" */\n")
 
-            o.write("export type ${type.name} = ")
+            val declName = if (stripGenerics(type.name) in emptyGenericStubs) stripGenerics(type.name) else type.name
+            o.write("export type $declName = ")
             when (type) {
                 is TsType.Inline -> error("Inline types are NOT exported. This is an error here")
                 is TsType.Object -> {
@@ -388,12 +430,12 @@ class Emitter(
                     val supers = type.intersections
                     // Alias-like object: no fields, exactly one supertype, no discriminator
                     if (type.fields.isEmpty() && supers.size == 1 && type.discriminator == null) {
-                        o.write(tsNameWithGenericsResolved(supers.first()))
+                        o.write(resolveType(supers.first()))
                         o.write("\n")
                         return@forEach
                     }
                     if (supers.isNotEmpty()) {
-                        o.write(supers.joinToString(" & ") { tsNameWithGenericsResolved(it) })
+                        o.write(supers.joinToString(" & ") { resolveType(it) })
                         o.write(" & ")
                     }
                     o.write("{\n")
@@ -408,7 +450,7 @@ class Emitter(
                             o.write("?")
                         }
                         o.write(": ")
-                        val fieldType = tsNameWithGenericsResolved(f.type)
+                        val fieldType = resolveType(f.type)
                         o.write(fieldType)
                         // Only add | null if the type doesn't already end with | null (avoids duplication)
                         if (f.nullable && !fieldType.endsWith("| null")) {
@@ -424,10 +466,10 @@ class Emitter(
 
                 is TsType.Union -> {
                     val unionBody = type.children.sortedBy { it.name }.joinToString(" | ") { child ->
-                        tsNameWithGenericsResolved(child)
+                        resolveType(child)
                     }
                     if (type.supertypes.isNotEmpty()) {
-                        val supers = type.supertypes.joinToString(" & ") { tsNameWithGenericsResolved(it) }
+                        val supers = type.supertypes.joinToString(" & ") { resolveType(it) }
                         o.write("$supers & ($unionBody)\n")
                     } else {
                         o.write("$unionBody\n")
@@ -452,11 +494,9 @@ class Emitter(
 
             if (o != lib) {
                 if (didImportTypes.add(o)) {
-                    o.write(
-                        "import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from '${
-                            o.importFrom(lib).dropLast(3)
-                        }'\n"
-                    )
+                    val libPath = o.importFrom(lib).dropLast(3)
+                    o.write("import { AbortablePromise, ApiOptions, fetchInternal } from '$libPath'\n")
+                    o.deferImport("flattenQueryParams", "import { flattenQueryParams } from '$libPath'")
                 }
             }
 
@@ -518,16 +558,16 @@ class Emitter(
                     sigParts += "path: { $fields }"
                 }
                 if (method.queryParamsType != null) {
-                    val qn = tsNameWithGenericsResolved(method.queryParamsType)
+                    val qn = resolveType(method.queryParamsType)
                     sigParts += "query: $qn"
                 }
                 if (req != null) {
-                    val bodyName = tsNameWithGenericsResolved(req)
+                    val bodyName = resolveType(req)
                     sigParts += (if (req.optional) "req?: " else "req: ") + withNullability(bodyName, req)
                 }
 
                 val sig = sigParts.joinToString(", ")
-                val resName = withNullability(tsNameWithGenericsResolved(res), res)
+                val resName = withNullability(resolveType(res), res)
                 o.write("  ${method.name}($sig): AbortablePromise<${resName}> {\n")
                 o.write("    return fetchInternal(this.opts, ")
                 if (method.queryParamsType != null) {

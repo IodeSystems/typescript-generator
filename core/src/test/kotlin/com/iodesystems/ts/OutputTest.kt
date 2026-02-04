@@ -141,7 +141,7 @@ class OutputTest {
             why = "api-lib.ts should contain library helpers"
         )
         sepApiTxt.assertContains(
-            fragment = "import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'",
+            fragment = "import { AbortablePromise, ApiOptions, fetchInternal } from './api-lib'",
             why = "api.ts should import from ./api-lib"
         )
         sepApiTxt.assertContains(
@@ -207,19 +207,16 @@ class OutputTest {
         kotlin.test.assertFalse(rTxt.contains("OutputApiA"), "rest.ts should not contain OutputApiA")
         kotlin.test.assertFalse(rTxt.contains("OutputApiB"), "rest.ts should not contain OutputApiB")
 
-        // External import lines should appear in group api files where types are referenced
-        aTxt.assertContains(
+        // External import lines should only appear in files that reference the imported name
+        val typesTxt = File(gDir, "api-types.ts").readText()
+        typesTxt.assertContains(
             fragment = "import type {Dayjs} from 'dayjs'",
-            why = "a.ts should include external import lines when referenced"
+            why = "api-types.ts should include Dayjs import (OffsetDateTime alias references it)"
         )
-        bTxt.assertContains(
-            fragment = "import type {Dayjs} from 'dayjs'",
-            why = "b.ts should include external import lines when referenced"
-        )
-        rTxt.assertContains(
-            fragment = "import type {Dayjs} from 'dayjs'",
-            why = "rest.ts should include external import lines when referenced"
-        )
+        // API files reference OffsetDateTime (not Dayjs directly), so they should NOT have the Dayjs import
+        kotlin.test.assertFalse(aTxt.contains("import type {Dayjs}"), "a.ts should not import Dayjs (not referenced directly)")
+        kotlin.test.assertFalse(bTxt.contains("import type {Dayjs}"), "b.ts should not import Dayjs (not referenced directly)")
+        kotlin.test.assertFalse(rTxt.contains("import type {Dayjs}"), "rest.ts should not import Dayjs (not referenced directly)")
     }
 
 

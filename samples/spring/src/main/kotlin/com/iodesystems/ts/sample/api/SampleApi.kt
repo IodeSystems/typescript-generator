@@ -69,6 +69,13 @@ class SampleApi {
         val isURL: Boolean,                       // Uppercase after is
     )
 
+    // Empty generic wrapper — exercises the unused-generic-stripping logic.
+    // Without the fix, this would emit `export type Wrapper<T> = {}` which fails noUnusedParameters.
+    interface Wrapper<T>
+
+    @GetMapping("/wrapped")
+    fun getWrapped(): Wrapper<String> = error("stub")
+
     @GetMapping("/is-prefix-test")
     fun getIsPrefixTest(): IsPrefixTest {
         return IsPrefixTest(

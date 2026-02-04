@@ -1,5 +1,4 @@
-import type {Dayjs} from 'dayjs'
-import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+import { AbortablePromise, ApiOptions, fetchInternal } from './api-lib'
 import { EventApiCreate, EventApiCreateResponseUnion } from './api-types'
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.EventApi}
@@ -14,7 +13,7 @@ export class EventApi {
     }).then(r=>r.json())
   }
 }
-import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiIsPrefixTest, SampleApiPing, SampleApiPingResponseUnion, SlugRefUnion } from './api-types'
+import { RefUnion, SampleApiAdd, SampleApiAddResponseUnion, SampleApiIsPrefixTest, SampleApiPing, SampleApiPingResponseUnion, SampleApiWrapper, SlugRefUnion } from './api-types'
 /**
  * Jvm {@link com.iodesystems.ts.sample.api.SampleApi}
  */
@@ -41,6 +40,11 @@ export class SampleApi {
   }
   getSlugRef(): AbortablePromise<SlugRefUnion> {
     return fetchInternal(this.opts, "/api/sample/slug-ref", {
+      method: "GET"
+    }).then(r=>r.json())
+  }
+  getWrapped(): AbortablePromise<SampleApiWrapper> {
+    return fetchInternal(this.opts, "/api/sample/wrapped", {
       method: "GET"
     }).then(r=>r.json())
   }

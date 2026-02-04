@@ -37,7 +37,7 @@ object TestUtils {
         val sb = StringBuilder()
         files.forEach { file ->
             sb.append("//<${file.file.name}>\n")
-            sb.append(file.content.lines().joinToString("\n") { line ->
+            sb.append(file.resolvedContent().lines().joinToString("\n") { line ->
                 if (line.startsWith("import")) "//$line" else line
             })
             sb.append("\n//</${file.file.name}>\n")

@@ -308,7 +308,7 @@ class TypeScriptGeneratorTest {
          * - {@link TestApi#post}
          */
         export type TestApiSimpleResponseUnion = TestApiSimpleResponse & (TestApiSimpleResponseFailure | TestApiSimpleResponseOk)
-        //import { AbortablePromise, ApiOptions, fetchInternal, flattenQueryParams } from './api-lib'
+        //import { AbortablePromise, ApiOptions, fetchInternal } from './api-lib'
         /**
          * Jvm {@link com.iodesystems.ts.TestApi}
          */

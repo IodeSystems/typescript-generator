@@ -1,4 +1,3 @@
-import type {Dayjs} from 'dayjs'
 import { createContext, useContext, useMemo } from 'react'
 import type { ApiOptions } from './api-lib'
 

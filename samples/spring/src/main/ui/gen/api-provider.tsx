@@ -1,4 +1,3 @@
-import type {Dayjs} from 'dayjs'
 import { ReactNode, useMemo } from 'react'
 import { ApiContext, ApiOptions } from './use-api'
 

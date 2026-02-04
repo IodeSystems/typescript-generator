@@ -211,6 +211,13 @@ export type SampleApiPingResponsePong = SampleApiPingResponse & {
  */
 export type SampleApiPingResponseUnion = SampleApiPingResponse & (SampleApiPingResponsePong)
 /**
+ * Jvm {@link com.iodesystems.ts.sample.api.SampleApi$Wrapper}
+ * METHOD ref:
+ * - {@link SampleApi#getWrapped}
+ */
+export type SampleApiWrapper = {
+}
+/**
  * Jvm {@link com.iodesystems.web.api.models.SlugRef}
  * TYPE ref:
  * - {@link SlugRefBu}

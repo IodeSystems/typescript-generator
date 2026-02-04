@@ -3,6 +3,7 @@ package com.iodesystems.ts.emitter
 import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.iodesystems.ts.lib.Asserts.assertContains
+import com.iodesystems.ts.lib.Asserts.assertNotContains
 import com.iodesystems.ts.lib.TestUtils.content
 import com.iodesystems.ts.lib.TestUtils.emitter
 import org.junit.Ignore
@@ -24,6 +25,7 @@ class EmitterTest {
             "should include eslint disable for no-unused-vars at top of files"
         )
     }
+
 
     @RestController
     @RequestMapping
@@ -305,6 +307,30 @@ class EmitterTest {
         result.assertContains(
             "export type EmitterTestKitchenSinkGetResponse = {\n  items?: Array<string> | undefined\n}",
             "nested response DTO with defaulted list should be optional and include undefined in type"
+        )
+    }
+
+    // Empty generic stub: a generic interface with no fields that appears as a return type
+    interface EmptyWrapper<T>
+
+    @RestController
+    @RequestMapping
+    class EmptyGenericStubApi {
+        @GetMapping
+        fun get(): EmptyWrapper<String> = error("stub")
+    }
+
+    @Test
+    fun emptyGenericStubDropsUnusedGenerics() {
+        val emitter = emitter(EmptyGenericStubApi::class)
+        val result = emitter.ts().content()
+        result.assertContains(
+            "export type EmitterTestEmptyWrapper = {\n}",
+            "empty generic stub should have generics stripped from declaration"
+        )
+        result.assertNotContains(
+            "EmptyWrapper<",
+            "references to empty generic stub should not include generic params"
         )
     }
 }
