@@ -88,7 +88,7 @@ class ErrorsAndVoidBehaviorTest {
         val em = emitter(VoidReturnController::class)
         val content = em.ts().content()
         content.assertContains(
-            fragment = ").then(r=>{})",
+            fragment = ").then(()=>{})",
             why = "Void return should not call r.json()"
         )
     }

@@ -58,7 +58,7 @@ class EmitterTest {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
             |      body: JSON.stringify(req)
-            |    }).then(r=>{})
+            |    }).then(()=>{})
             |  }
             """.trimMargin(), "withRequest"
         )
@@ -164,7 +164,7 @@ class EmitterTest {
             |      method: "POST",
             |      headers: {'Content-Type': 'application/json'},
             |      body: JSON.stringify(req)
-            |    }).then(r=>{})
+            |    }).then(()=>{})
             |  }
             """.trimMargin(), "withRequest"
         )

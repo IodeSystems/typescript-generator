@@ -591,7 +591,7 @@ class Emitter(
                 }
                 o.write("    })")
                 if (res.name == "void") {
-                    o.write(".then(r=>{})\n")
+                    o.write(".then(()=>{})\n")
                 } else {
                     o.write(".then(r=>r.json())\n")
                 }

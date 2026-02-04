@@ -445,7 +445,7 @@ export class EmitterTestKitchenSink {
   path(path: { id: string | number }): AbortablePromise<void> {
     return fetchInternal(this.opts, "herp/derp/{id}".replace("{id}", String(path.id)), {
       method: "GET"
-    }).then(r=>{})
+    }).then(()=>{})
   }
   search(query: EmitterTestKitchenSinkSearchQuery): AbortablePromise<Array<number>> {
     return fetchInternal(this.opts, flattenQueryParams("herp/derp/search", query, null), {
@@ -457,7 +457,7 @@ export class EmitterTestKitchenSink {
       method: "POST",
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req)
-    }).then(r=>{})
+    }).then(()=>{})
   }
 }
 
