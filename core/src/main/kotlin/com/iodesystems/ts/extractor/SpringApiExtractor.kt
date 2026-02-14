@@ -64,6 +64,7 @@ class SpringApiExtractor(
 
                     controllerInfo.methodInfo
                         .filter { mi -> hasHttpMapping(mi) }
+                        .filter { mi -> !mi.name.contains('$') }
                         .forEach { mi ->
                             val http = resolveHttpMethod(mi)
                             // Method-level relative path from annotation

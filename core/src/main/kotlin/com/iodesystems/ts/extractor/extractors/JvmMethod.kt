@@ -10,9 +10,12 @@ import com.iodesystems.ts.model.TsType
 import io.github.classgraph.MethodInfo
 import kotlinx.metadata.KmFunction
 import kotlinx.metadata.declaresDefaultValue
+import kotlinx.metadata.isSuspend
 import kotlinx.metadata.isNullable
 import org.springframework.web.bind.annotation.RequestBody
 import java.lang.reflect.Method
+import java.lang.reflect.ParameterizedType
+import java.lang.reflect.WildcardType
 
 data class JvmMethod(
     val jvmExtractor: JvmExtractor,
@@ -82,6 +85,13 @@ data class JvmMethod(
         )
 
         val kmFun = methodInfo.kotlinMethod()
+
+        // For suspend functions, the JVM return type is Object and the real return type
+        // is encoded in the last parameter: Continuation<? super ActualReturnType>
+        if (kmFun != null && kmFun.isSuspend) {
+            return extractSuspendReturnType(method, kmFun)
+        }
+
         val genericReturnType = method.genericReturnType
 
         // Check for void/Unit
@@ -99,6 +109,49 @@ data class JvmMethod(
 
         val isNullable = kmFun?.returnType?.isNullable ?: false
         return classRef.toTsType(genericReturnType, isNullable, false, emptyMap(), kmFun?.returnType)
+    }
+
+    /**
+     * Extract the real return type from a suspend function.
+     * JVM signature: Object method(args..., Continuation<? super T>)
+     * The actual return type T is in the Continuation's type argument lower bound.
+     */
+    private fun extractSuspendReturnType(method: Method, kmFun: KmFunction): TsType {
+        val kmReturnType = kmFun.returnType
+        val isNullable = kmReturnType.isNullable
+
+        // Check if Kotlin metadata says return type is Unit
+        val kmClassifier = kmReturnType.classifier
+        if (kmClassifier is kotlinx.metadata.KmClassifier.Class &&
+            kmClassifier.name == "kotlin/Unit"
+        ) {
+            return TsType.Inline(
+                fqcn = "void",
+                name = "void",
+                nullable = false,
+                optional = false
+            )
+        }
+
+        // Extract the real return type from the Continuation parameter's generic argument
+        val lastParamType = method.genericParameterTypes.lastOrNull()
+        if (lastParamType is ParameterizedType &&
+            lastParamType.rawType.typeName == "kotlin.coroutines.Continuation"
+        ) {
+            val contTypeArg = lastParamType.actualTypeArguments.firstOrNull()
+            // Continuation<? super T> — extract T from the lower bound of the wildcard
+            val realType = when (contTypeArg) {
+                is WildcardType -> contTypeArg.lowerBounds.firstOrNull() ?: contTypeArg.upperBounds.firstOrNull()
+                else -> contTypeArg
+            }
+            if (realType != null) {
+                return classRef.toTsType(realType, isNullable, false, emptyMap(), kmReturnType)
+            }
+        }
+
+        // Fallback: use Kotlin metadata return type with Object as the Java type
+        // This shouldn't happen normally, but is safe
+        return classRef.toTsType(method.genericReturnType, isNullable, false, emptyMap(), kmReturnType)
     }
 
     private fun extractQueryParamsType(): TsType? {
