@@ -5,6 +5,7 @@ import com.iodesystems.ts.lib.TestUtils.content
 import com.iodesystems.ts.lib.TestUtils.emitter
 import org.springframework.web.bind.annotation.*
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 data class QUser(val name: String, val age: Int)
 
@@ -67,5 +68,27 @@ class QueryParamsTest {
             |  }
         """.trimMargin(), "should work well with path replacements as well")
 
+    }
+
+    @Test
+    fun testDefaultRepeatedKeysStyle() {
+        val em = emitter(QueryParamsController::class)
+        val content = em.ts().content(includeLib = true)
+        assertTrue(
+            content.contains("""for (let i = 0; i < val.length; i++) { walk(pfx, val[i]) }"""),
+            "Default should use repeated-keys style (walk(pfx, val[i]))"
+        )
+    }
+
+    @Test
+    fun testBracketsStyle() {
+        val em = emitter(QueryParamsController::class) {
+            arrayQueryParamStyle(ArrayQueryParamStyle.BRACKETS)
+        }
+        val content = em.ts().content(includeLib = true)
+        assertTrue(
+            content.contains("""for (let i = 0; i < val.length; i++) { walk(pfx + "[" + i + "]", val[i]) }"""),
+            "Brackets style should use walk(pfx + \"[\" + i + \"]\", val[i])"
+        )
     }
 }

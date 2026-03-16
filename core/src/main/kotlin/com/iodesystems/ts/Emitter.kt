@@ -13,7 +13,12 @@ class Emitter(
 ) {
 
     companion object Companion {
-        fun lib(): String = """
+        fun lib(arrayStyle: ArrayQueryParamStyle = ArrayQueryParamStyle.REPEATED_KEYS): String {
+            val arrayWalkLine = when (arrayStyle) {
+                ArrayQueryParamStyle.BRACKETS -> """for (let i = 0; i < val.length; i++) { walk(pfx + "[" + i + "]", val[i]) }"""
+                ArrayQueryParamStyle.REPEATED_KEYS -> """for (let i = 0; i < val.length; i++) { walk(pfx, val[i]) }"""
+            }
+            return """
         export type RequestInterceptor = (input: RequestInfo, init: RequestInit) => Promise<[RequestInfo, RequestInit]> | [RequestInfo, RequestInit]
         export type ResponseInterceptor = (response: Promise<Response>) => Promise<Response>
         export type ApiOptions = {
@@ -81,7 +86,7 @@ class Emitter(
           const walk = (pfx: string, val: any) => {
             if (val === null || val === undefined) return
             if (Array.isArray(val)) {
-              for (let i = 0; i < val.length; i++) { walk(pfx + "[" + i + "]", val[i]) }
+              $arrayWalkLine
             } else if (typeof val === 'object' && !(val instanceof Date) && !(val instanceof Blob)) {
               for (const k of Object.keys(val)) {
                 const next = pfx ? (pfx + "." + k) : k
@@ -123,6 +128,7 @@ class Emitter(
           return abortable(performFetch(), controller, () => {})
         }
         """.trimIndent()
+        }
 
         /** Pure TypeScript hook file - no JSX */
         fun reactHook(libImportPath: String): String = """
@@ -385,7 +391,7 @@ class Emitter(
         }
 
         val lib = createWriteContext(libFile)
-        lib.write(lib())
+        lib.write(lib(config.arrayQueryParamStyle))
         lib.write("\n")
 
         // Identify empty generic stub types: Object types with generics but no fields and no intersections.

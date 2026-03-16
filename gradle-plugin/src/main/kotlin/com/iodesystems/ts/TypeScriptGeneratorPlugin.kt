@@ -118,6 +118,9 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
         abstract val reactProviderFileName: Property<String>
 
         @get:Input
+        abstract val arrayQueryParamStyle: Property<String>
+
+        @get:Input
         abstract val classPathUrls: ListProperty<String>
 
         @get:InputFiles
@@ -153,6 +156,7 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
                 autoDetectIsGetters = autoDetectIsGetters.get(),
                 allowIsGettersForNonBoolean = allowIsGettersForNonBoolean.get(),
                 useStdBeanNaming = useStdBeanNaming.get(),
+                arrayQueryParamStyle = ArrayQueryParamStyle.valueOf(arrayQueryParamStyle.get()),
             )
             TypeScriptGenerator(config)
                 .generate()
@@ -200,6 +204,7 @@ class TypeScriptGeneratorPlugin : Plugin<Project> {
             t.autoDetectIsGetters.convention(configProvider.map { it.autoDetectIsGetters })
             t.allowIsGettersForNonBoolean.convention(configProvider.map { it.allowIsGettersForNonBoolean })
             t.useStdBeanNaming.convention(configProvider.map { it.useStdBeanNaming })
+            t.arrayQueryParamStyle.convention(configProvider.map { it.arrayQueryParamStyle.name })
 
             // Wire classpath from Java plugin if available, using lazy providers
             val javaExt = target.extensions.findByType(JavaPluginExtension::class.java)

@@ -1,5 +1,6 @@
 package com.iodesystems.ts.lib
 
+import com.iodesystems.ts.ArrayQueryParamStyle
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.Emitter
 import com.iodesystems.ts.Scanner
@@ -44,7 +45,7 @@ object TestUtils {
         }
         return sb.toString().let { s ->
             if (includeLib) s
-            else s.replace(Emitter.lib(), "")
+            else ArrayQueryParamStyle.entries.fold(s) { acc, style -> acc.replace(Emitter.lib(style), "") }
         }
     }
 }

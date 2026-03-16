@@ -65,7 +65,7 @@ export function flattenQueryParams(path: string, params?: any, prefix: string|nu
   const walk = (pfx: string, val: any) => {
     if (val === null || val === undefined) return
     if (Array.isArray(val)) {
-      for (let i = 0; i < val.length; i++) { walk(pfx + "[" + i + "]", val[i]) }
+      for (let i = 0; i < val.length; i++) { walk(pfx, val[i]) }
     } else if (typeof val === 'object' && !(val instanceof Date) && !(val instanceof Blob)) {
       for (const k of Object.keys(val)) {
         const next = pfx ? (pfx + "." + k) : k

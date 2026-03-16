@@ -13,6 +13,13 @@ import java.time.LocalTime
 import java.time.OffsetDateTime
 import kotlin.reflect.KClass
 
+enum class ArrayQueryParamStyle {
+    /** key[0]=a&key[1]=b — works with PHP, Express, jQuery-style backends */
+    BRACKETS,
+    /** key=a&key=b — works with Spring, JAX-RS, Go, .NET */
+    REPEATED_KEYS,
+}
+
 data class Config(
     val includeRefComments: Boolean = true,
     val cleanOutputDir: Boolean = false,
@@ -113,6 +120,10 @@ data class Config(
     // preserved unless followed by another lowercase letter. E.g., getURL() -> "URL" (not "url").
     // Default false (matches Jackson default which always lowercases: getURL() -> "url").
     val useStdBeanNaming: Boolean = false,
+    // Controls how array query parameters are serialized in generated flattenQueryParams.
+    // REPEATED_KEYS: key=a&key=b (Spring, JAX-RS, Go, .NET)
+    // BRACKETS: key[0]=a&key[1]=b (PHP, Express, jQuery)
+    val arrayQueryParamStyle: ArrayQueryParamStyle = ArrayQueryParamStyle.REPEATED_KEYS,
 ) : Serializable {
 
     override fun toString(): String {
@@ -395,6 +406,11 @@ data class Config(
         /** Whether to use strict JavaBeans naming (getURL -> URL). Default false (Jackson default: getURL -> url). */
         fun useStdBeanNaming(enabled: Boolean): Builder {
             config = config.copy(useStdBeanNaming = enabled); return this
+        }
+
+        /** Set the array query parameter serialization style for generated flattenQueryParams. */
+        fun arrayQueryParamStyle(style: ArrayQueryParamStyle): Builder {
+            config = config.copy(arrayQueryParamStyle = style); return this
         }
 
         /** Enable emitting React helper files: useApi hook (.ts) and ApiProvider component (.tsx). */
