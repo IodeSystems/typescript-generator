@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")/.."
+
+CURRENT_VERSION=$(./gradlew -q versionGet)
+RELEASE_VERSION=${CURRENT_VERSION%-SNAPSHOT}
+
+echo "=== Release: $CURRENT_VERSION -> $RELEASE_VERSION ==="
+
+echo "--- Stripping SNAPSHOT, committing, and tagging v$RELEASE_VERSION ---"
 ./gradlew releaseStripSnapshotCommitAndTag && \
-  ((./gradlew publishToMavenLocal && ./gradlew releasePublish && ./gradlew releasePrepareNextDevelopmentIteration) || ./gradlew releaseRevert)
+  (
+    echo "--- Publishing $RELEASE_VERSION to Maven Local ---"
+    ./gradlew publishToMavenLocal && \
+    echo "--- Publishing $RELEASE_VERSION to Maven Central ---"
+    ./gradlew releasePublish && \
+    echo "--- Preparing next development iteration ---"
+    ./gradlew releasePrepareNextDevelopmentIteration
+    NEXT_VERSION=$(./gradlew -q versionGet)
+    echo "=== Released $RELEASE_VERSION, now on $NEXT_VERSION ==="
+  ) || (
+    echo "!!! Release failed, reverting ==="
+    ./gradlew releaseRevert
+  )
