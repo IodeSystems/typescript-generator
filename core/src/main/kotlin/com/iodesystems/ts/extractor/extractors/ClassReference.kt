@@ -697,13 +697,15 @@ class ClassReference(
     private fun getPropertyNames(clazz: Class<*>): Set<String> {
         val names = mutableSetOf<String>()
 
-        // Try Kotlin metadata first - but we need to derive the JSON name from getters
-        // since Kotlin property names like "isActive" become "active" in JSON
         val classInfo = scan.getClassInfo(clazz.name)
         val kmClass: KmClass? = classInfo?.kotlinClass()
 
-        // Collect getter-based properties (get* and is* getters)
-        // For is* getters, we now also include non-boolean if allowIsGettersForNonBoolean is true
+        // Collect Kotlin property names (these use constructor param names per KotlinModule)
+        val kotlinPropNames = kmClass?.properties?.map { it.name }?.toSet() ?: emptySet()
+        names.addAll(kotlinPropNames)
+
+        // Also collect getter-based properties for methods that aren't Kotlin properties
+        // (e.g., Java-style `fun getX()` in Kotlin interfaces, or Java class getters)
         clazz.methods.filter { method ->
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
@@ -713,31 +715,16 @@ class ClassReference(
                 (method.name.startsWith("is") && method.name.length > 2)
             )
         }.forEach { getter ->
-            val propName = derivePropertyNameFromGetter(getter.name, getter.returnType.name)
-            names.add(propName)
-        }
-
-        // Also include Kotlin property names that might not have getters
-        // (though for data classes they always do)
-        if (kmClass != null) {
-            kmClass.properties.forEach { prop ->
-                // Find the getter for this property to get the correct JSON name
-                val getterName = if (prop.name.startsWith("is") && (prop.returnType.classifier as? kotlinx.metadata.KmClassifier.Class)?.name in listOf("kotlin/Boolean", "java/lang/Boolean")) {
-                    prop.name // Boolean is* properties use isX() getter
-                } else if (prop.name.startsWith("is")) {
-                    prop.name // Kotlin generates isX() for all is* properties
-                } else {
-                    "get${prop.name.replaceFirstChar { it.uppercase() }}"
-                }
-                // Try to find matching method
-                val method = clazz.methods.firstOrNull { it.name == getterName && it.parameterCount == 0 }
-                if (method != null) {
-                    val jsonName = derivePropertyNameFromGetter(method.name, method.returnType.name)
-                    names.add(jsonName)
-                } else {
-                    // Fallback to property name
-                    names.add(prop.name)
-                }
+            // Derive the Kotlin property name this getter corresponds to
+            val kotlinPropName = if (getter.name.startsWith("is")) {
+                getter.name
+            } else {
+                getter.name.substring(3).replaceFirstChar { it.lowercase() }
+            }
+            // Only add JavaBean-derived name for methods that aren't Kotlin properties
+            if (kotlinPropName !in kotlinPropNames) {
+                val propName = derivePropertyNameFromGetter(getter.name, getter.returnType.name)
+                names.add(propName)
             }
         }
 
@@ -881,12 +868,11 @@ class ClassReference(
                     clazz.methods.firstOrNull { it.name == getterName && it.parameterCount == 0 }
                 }
 
-                // Derive JSON property name using Jackson naming conventions
-                val jsonPropName = if (getterMethod != null) {
-                    derivePropertyNameFromGetter(getterMethod.name, getterMethod.returnType.name)
-                } else {
-                    propName // Fallback to property name if no getter found
-                }
+                // For Kotlin data classes, use the constructor parameter name directly.
+                // Jackson's KotlinModule reads Kotlin metadata and uses the constructor parameter
+                // name as the JSON key, bypassing JavaBean getter conventions.
+                // e.g., val isActive: Boolean -> "isActive" (not "active")
+                val jsonPropName = propName
 
                 // Skip excluded fields (inherited from superclass) - check both names
                 if (jsonPropName in excludeFields || propName in excludeFields) return@forEach
@@ -928,8 +914,13 @@ class ClassReference(
             }
         }
 
-        // Also include getters (for non-data classes and Java classes)
-        // Handle both get* and is* getters (is* now includes non-boolean if configured)
+        // Collect Kotlin constructor param names (already handled above with correct naming)
+        val ctorParamNames: Set<String> = if (kmClass != null) {
+            kmClass.constructors.firstOrNull { !it.isSecondary }
+                ?.valueParameters?.map { it.name }?.toSet() ?: emptySet()
+        } else emptySet()
+
+        // Also include getters (for non-data classes, Java classes, and non-constructor Kotlin properties)
         clazz.methods.filter { method ->
             method.parameterCount == 0 &&
             method.returnType != Void.TYPE &&
@@ -954,14 +945,21 @@ class ClassReference(
                 getter.name.substring(3).replaceFirstChar { it.lowercase() }
             }
 
+            // Skip getters for constructor params — already handled above with Kotlin metadata naming
+            if (kotlinPropName in ctorParamNames) return@forEach
+
+            // For Kotlin body properties (non-constructor), use the Kotlin property name directly
+            // (matching Jackson+KotlinModule behavior), fall back to JavaBean convention for Java
+            val kmPropForGetter = kmProperties[kotlinPropName]
+            val effectiveJsonPropName = if (kmPropForGetter != null) kotlinPropName else jsonPropName
+
             // Resolve serialized name (allows @JsonProperty to override)
             val serializedName = resolveSerializedFieldName(classInfo, kotlinPropName, ctorParamAnnotations)
-            // Use jsonPropName (JavaBeans naming) if no annotation override, otherwise use serialized name
-            val finalName = if (serializedName == kotlinPropName) jsonPropName else serializedName
+            // Use Kotlin/JavaBeans-derived name if no annotation override, otherwise use serialized name
+            val finalName = if (serializedName == kotlinPropName) effectiveJsonPropName else serializedName
 
             if (finalName !in fields) {
-                val kmProp = kmProperties[kotlinPropName]
-                val isNullable = kmProp?.returnType?.isNullable ?: false
+                val isNullable = kmPropForGetter?.returnType?.isNullable ?: false
                 val javaType = getter.genericReturnType
 
                 // When @JsonInclude(NON_NULL) is set, nullable fields are omitted when null,

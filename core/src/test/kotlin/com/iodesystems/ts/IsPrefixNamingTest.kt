@@ -17,12 +17,12 @@ class IsPrefixApi {
      * Mirrors the test case from samples/spring to verify Jackson naming behavior.
      */
     data class IsPrefixTest(
-        val isActive: Boolean,                    // Should become "active" in JSON
-        val isOptional: Optional<Boolean>,        // Should become "optional" in JSON (non-boolean is-getter)
-        val isNullable: Boolean?,                 // Should become "nullable" in JSON
-        val isOptionalNullable: Optional<Boolean>?, // Should become "optionalNullable" in JSON
+        val isActive: Boolean,                    // Jackson+KotlinModule: "isActive"
+        val isOptional: Optional<Boolean>,        // Jackson+KotlinModule: "isOptional"
+        val isNullable: Boolean?,                 // Jackson+KotlinModule: "isNullable"
+        val isOptionalNullable: Optional<Boolean>?, // Jackson+KotlinModule: "isOptionalNullable"
         val enabled: Boolean,                     // Control - no is-prefix, stays "enabled"
-        val isURL: Boolean,                       // Should become "url" (lowercase) with default Jackson naming
+        val isURL: Boolean,                       // Jackson+KotlinModule: "isURL"
     )
 
     @GetMapping
@@ -32,116 +32,59 @@ class IsPrefixApi {
 class IsPrefixNamingTest {
 
     @Test
-    fun `is-prefix boolean properties should have is stripped with default config`() {
+    fun `Kotlin data class is-prefix properties should use constructor param names matching KotlinModule`() {
         val em = emitter(IsPrefixApi::class) { outputDirectory("./tmp") }
         val content = em.ts().content()
 
-        // With default config (autoDetectIsGetters=true, allowIsGettersForNonBoolean=true, useStdBeanNaming=false)
-        // All is-prefix properties should have "is" stripped
+        // Kotlin data classes: Jackson's KotlinModule uses constructor parameter names directly,
+        // so "isActive" stays "isActive" (not stripped to "active")
         content.assertContains(
             fragment = """
                 export type IsPrefixApiIsPrefixTest = {
-                  active: boolean
                   enabled: boolean
-                  nullable: boolean | null
-                  optional: boolean | null
-                  optionalNullable: boolean | null
-                  url: boolean
+                  isActive: boolean
+                  isNullable: boolean | null
+                  isOptional: boolean | null
+                  isOptionalNullable: boolean | null
+                  isURL: boolean
                 }
             """.trimIndent(),
-            why = "is-prefix properties should have 'is' stripped and follow Jackson naming conventions"
+            why = "Kotlin data class properties should use constructor parameter names (matching Jackson+KotlinModule)"
         )
     }
 
     @Test
-    fun `disabling autoDetectIsGetters should preserve is-prefix for boolean properties`() {
+    fun `Kotlin data class naming is not affected by autoDetectIsGetters config`() {
         val em = emitter(IsPrefixApi::class) {
             outputDirectory("./tmp")
             autoDetectIsGetters(false)
         }
         val content = em.ts().content()
 
-        // With autoDetectIsGetters=false, boolean is* getters should preserve "is" prefix
-        // Non-boolean is* getters still follow allowIsGettersForNonBoolean (default true)
+        // Kotlin data classes always use constructor parameter names (matching KotlinModule),
+        // regardless of autoDetectIsGetters setting
         content.assertContains(
             fragment = "isActive: boolean",
-            why = "boolean is-prefix properties should preserve 'is' when autoDetectIsGetters=false"
-        )
-        content.assertContains(
-            fragment = "isNullable: boolean | null",
-            why = "nullable boolean is-prefix properties should preserve 'is' when autoDetectIsGetters=false"
-        )
-        content.assertContains(
-            fragment = "isURL: boolean",
-            why = "boolean is-prefix properties should preserve 'is' when autoDetectIsGetters=false"
-        )
-        // Non-boolean is* getters should still have is stripped (allowIsGettersForNonBoolean is still true)
-        content.assertContains(
-            fragment = "optional: boolean | null",
-            why = "non-boolean is-prefix properties should have 'is' stripped when allowIsGettersForNonBoolean=true"
-        )
-    }
-
-    @Test
-    fun `disabling allowIsGettersForNonBoolean should preserve is-prefix for non-boolean properties`() {
-        val em = emitter(IsPrefixApi::class) {
-            outputDirectory("./tmp")
-            allowIsGettersForNonBoolean(false)
-        }
-        val content = em.ts().content()
-
-        // With allowIsGettersForNonBoolean=false, non-boolean is* getters should preserve "is" prefix
-        // Boolean is* getters still follow autoDetectIsGetters (default true)
-        content.assertContains(
-            fragment = "active: boolean",
-            why = "boolean is-prefix properties should have 'is' stripped when autoDetectIsGetters=true"
+            why = "Kotlin data class property names are unaffected by autoDetectIsGetters"
         )
         content.assertContains(
             fragment = "isOptional: boolean | null",
-            why = "non-boolean is-prefix properties should preserve 'is' when allowIsGettersForNonBoolean=false"
-        )
-        content.assertContains(
-            fragment = "isOptionalNullable: boolean | null",
-            why = "non-boolean is-prefix properties should preserve 'is' when allowIsGettersForNonBoolean=false"
+            why = "Kotlin data class property names are unaffected by autoDetectIsGetters"
         )
     }
 
     @Test
-    fun `useStdBeanNaming should preserve uppercase after prefix removal`() {
+    fun `Kotlin data class naming is not affected by useStdBeanNaming config`() {
         val em = emitter(IsPrefixApi::class) {
             outputDirectory("./tmp")
             useStdBeanNaming(true)
         }
         val content = em.ts().content()
 
-        // With useStdBeanNaming=true, "isURL" should become "URL" not "url"
-        content.assertContains(
-            fragment = "URL: boolean",
-            why = "useStdBeanNaming=true should preserve uppercase: isURL -> URL"
-        )
-    }
-
-    @Test
-    fun `all naming options disabled should preserve original property names`() {
-        val em = emitter(IsPrefixApi::class) {
-            outputDirectory("./tmp")
-            autoDetectIsGetters(false)
-            allowIsGettersForNonBoolean(false)
-        }
-        val content = em.ts().content()
-
-        // With both options disabled, all is-prefix properties should preserve their names
-        content.assertContains(
-            fragment = "isActive: boolean",
-            why = "is-prefix should be preserved when autoDetectIsGetters=false"
-        )
-        content.assertContains(
-            fragment = "isOptional: boolean | null",
-            why = "is-prefix should be preserved when allowIsGettersForNonBoolean=false"
-        )
+        // Kotlin data classes use constructor parameter names, not JavaBean conventions
         content.assertContains(
             fragment = "isURL: boolean",
-            why = "is-prefix should be preserved when autoDetectIsGetters=false"
+            why = "Kotlin data class uses constructor param name 'isURL', not JavaBean-derived"
         )
     }
 }
