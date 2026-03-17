@@ -102,8 +102,8 @@ export type OffsetDateTime = Dayjs
  * - {@link RefLoc}
  */
 export type Ref = {
-  buId: number
-  locId: number
+  buId: number | null
+  locId: number | null
   orgId: number
 }
 /**
@@ -225,8 +225,8 @@ export type SampleApiWrapper = {
  * - {@link SlugRefOrg}
  */
 export type SlugRef = {
-  buSlug: string
-  locSlug: string
+  buSlug: string | null
+  locSlug: string | null
   orgSlug: string
 }
 /**
@@ -235,7 +235,7 @@ export type SlugRef = {
 export type SlugRefBu = SlugRef & {
   "_type": "Bu"
   buId: number
-  locId: number
+  locId: number | null
   orgId: number
 }
 /**
@@ -252,8 +252,8 @@ export type SlugRefLoc = SlugRef & {
  */
 export type SlugRefOrg = SlugRef & {
   "_type": "Org"
-  buId: number
-  locId: number
+  buId: number | null
+  locId: number | null
   orgId: number
 }
 /**

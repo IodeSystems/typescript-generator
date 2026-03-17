@@ -66,6 +66,29 @@ object KotlinMetadata {
         }
     }
 
+    /**
+     * Read Kotlin metadata from a Class loaded via reflection.
+     * Fallback for when ClassGraph doesn't have a resource (e.g. external classes).
+     */
+    fun kotlinClassFromReflection(clazz: Class<*>): KmClass? = classCache.getOrPut(clazz.name) {
+        val metadata = kotlinMetadataFromReflection(clazz)
+        if (metadata != null) {
+            (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
+        } else {
+            null
+        }
+    }
+
+    private fun kotlinMetadataFromReflection(clazz: Class<*>): Metadata? = metadataCache.getOrPut(clazz.name) {
+        // Load bytecode from the classloader
+        val resourceName = clazz.name.replace('.', '/') + ".class"
+        val inputStream = clazz.classLoader?.getResourceAsStream(resourceName) ?: return@getOrPut null
+        val classNode = ClassNode()
+        val classReader = inputStream.use { ClassReader(it) }
+        classReader.accept(classNode, ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES)
+        extractMetadataFromClassNode(classNode)
+    }
+
     fun ClassInfo.kotlinMetadata(): Metadata? = metadataCache.getOrPut(name) {
         val classNode = ClassNode()
         val res = this.resource ?: return@getOrPut null
@@ -75,7 +98,10 @@ object KotlinMetadata {
 
         // Read the class bytes and populate the ClassNode
         classReader.accept(classNode, ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES)
+        extractMetadataFromClassNode(classNode)
+    }
 
+    private fun extractMetadataFromClassNode(classNode: ClassNode): Metadata? {
         // The Kotlin Metadata annotation has a specific internal JVM name
         val metadataDescriptor = "Lkotlin/Metadata;"
         val metadataAnnotation = classNode.visibleAnnotations?.find {
@@ -85,7 +111,7 @@ object KotlinMetadata {
         }
 
         if (metadataAnnotation == null) {
-            return@getOrPut null
+            return null
         }
 
         // Extract the raw fields from the annotation (JVM names are short to save space)
@@ -118,6 +144,6 @@ object KotlinMetadata {
             }
         }
 
-        kotlinx.metadata.jvm.Metadata(kind, metadataVersion, data1, data2, extraString, packageName, extraInt)
+        return kotlinx.metadata.jvm.Metadata(kind, metadataVersion, data1, data2, extraString, packageName, extraInt)
     }
 }

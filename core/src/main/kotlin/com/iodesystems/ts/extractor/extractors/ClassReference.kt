@@ -2,6 +2,7 @@ package com.iodesystems.ts.extractor.extractors
 
 import com.iodesystems.ts.Config
 import com.iodesystems.ts.adapter.JsonAdapter
+import com.iodesystems.ts.extractor.KotlinMetadata
 import com.iodesystems.ts.extractor.KotlinMetadata.kotlinClass
 import com.iodesystems.ts.model.TsField
 import com.iodesystems.ts.model.TsType
@@ -78,6 +79,17 @@ class ClassReference(
             "java.lang.Boolean",
             "kotlin.Boolean",
         )
+    }
+
+    /**
+     * Get KmClass for a Java class, trying ClassGraph first then falling back to
+     * classloader-based bytecode reading. This handles external classpath classes
+     * where ClassGraph's resource may be null.
+     */
+    private fun resolveKmClass(clazz: Class<*>): KmClass? {
+        val classInfo = scan.getClassInfo(clazz.name)
+        return classInfo?.kotlinClass()
+            ?: KotlinMetadata.kotlinClassFromReflection(clazz)
     }
 
     /**
@@ -571,8 +583,7 @@ class ClassReference(
         val inheritedFromInterfaces = collectInheritedFieldNames(clazz)
 
         // Also create an Object type for the interface itself
-        val classInfo = scan.getClassInfo(fqcn)
-        val kmClass: KmClass? = classInfo?.kotlinClass()
+        val kmClass: KmClass? = resolveKmClass(clazz)
         val interfaceFields = extractFields(clazz, kmClass, typeParams, inheritedFromInterfaces)
         val interfaceType = TsType.Object(
             fqcn = fqcn,
@@ -628,8 +639,7 @@ class ClassReference(
             )
 
             // Extract other fields from the child class, excluding inherited ones
-            val childClassInfo = scan.getClassInfo(childFqcn)
-            val childKmClass: KmClass? = childClassInfo?.kotlinClass()
+            val childKmClass: KmClass? = resolveKmClass(childClass)
             val otherFields = extractFields(childClass, childKmClass, typeParams, childExcludeFields)
             childFields.putAll(otherFields)
 
@@ -697,8 +707,9 @@ class ClassReference(
     private fun getPropertyNames(clazz: Class<*>): Set<String> {
         val names = mutableSetOf<String>()
 
-        val classInfo = scan.getClassInfo(clazz.name)
-        val kmClass: KmClass? = classInfo?.kotlinClass()
+        // Try Kotlin metadata first - but we need to derive the JSON name from getters
+        // since Kotlin property names like "isActive" become "active" in JSON
+        val kmClass: KmClass? = resolveKmClass(clazz)
 
         // Collect Kotlin property names (these use constructor param names per KotlinModule)
         val kotlinPropNames = kmClass?.properties?.map { it.name }?.toSet() ?: emptySet()
@@ -761,7 +772,7 @@ class ClassReference(
 
         // Get Kotlin metadata for nullability info
         val classInfo = scan.getClassInfo(fqcn)
-        val kmClass: KmClass? = classInfo?.kotlinClass()
+        val kmClass: KmClass? = resolveKmClass(clazz)
 
         // Collect inherited field names to exclude from this type's own fields
         val inheritedFields = collectInheritedFieldNames(clazz)

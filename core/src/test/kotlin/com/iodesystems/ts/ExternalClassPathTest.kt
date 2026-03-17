@@ -125,9 +125,20 @@ class ExternalClassPathTest {
             ts.contains("name:") || ts.contains("name :"),
             "User type should have name field"
         )
+        // User.email is nullable (String?) without default — nullable but not optional
         assertTrue(
-            ts.contains("email:") || ts.contains("email :"),
-            "User type should have email field"
+            ts.contains("email: string | null"),
+            "User.email should be nullable. Actual TS:\n$ts"
+        )
+
+        // UserPreferences should have optional fields (they have defaults)
+        assertTrue(
+            ts.contains("theme?: string") || ts.contains("theme?: string | undefined"),
+            "UserPreferences.theme should be optional (has default). Actual TS:\n$ts"
+        )
+        assertTrue(
+            ts.contains("notifications?: boolean") || ts.contains("notifications?: boolean | undefined"),
+            "UserPreferences.notifications should be optional (has default). Actual TS:\n$ts"
         )
 
         // Page should have pagination fields
