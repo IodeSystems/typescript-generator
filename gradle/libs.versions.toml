@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.20"
+kotlin = "2.4.10"
 org-jetbrains-dokka = "2.1.0"
 org-ow2-asm = "9.10.1"
 
