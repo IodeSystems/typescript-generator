@@ -6,7 +6,7 @@ org-ow2-asm = "9.10.1"
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "org-ow2-asm" }
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "org-ow2-asm" }
-classgraph = "io.github.classgraph:classgraph:4.8.185"
+classgraph = "io.github.classgraph:classgraph:4.8.186"
 gradle-dokka-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "org-jetbrains-dokka" }
 gradle-kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 gradle-license-report-plugin = "com.github.jk1.dependency-license-report:com.github.jk1.dependency-license-report.gradle.plugin:2.9"
