@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./gradlew classes testClasses -PskipSigning -x test"
+          }
+        ]
+      }
+    ]
+  }
+}
