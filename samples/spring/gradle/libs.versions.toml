@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.2.21"
-spring-boot = "3.5.8"
+spring-boot = "3.5.16"
 
 [libraries]
 gradle-kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
