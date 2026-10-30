@@ -7,5 +7,5 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-annotations:2.22")
 
     // Spring for REST annotations (needed for @ApiController meta-annotation)
-    implementation("org.springframework:spring-web:7.0.9")
+    implementation("org.springframework:spring-web:7.0.10")
 }
