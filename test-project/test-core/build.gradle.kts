@@ -7,7 +7,7 @@ dependencies {
     implementation(project(":test-project:test-dep"))
 
     // Spring for REST annotations
-    implementation("org.springframework:spring-web:7.0.9")
+    implementation("org.springframework:spring-web:7.0.10")
 
     // Jackson for JSON handling
     implementation("com.fasterxml.jackson.core:jackson-annotations:2.22")
