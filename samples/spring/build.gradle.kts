@@ -54,7 +54,7 @@ dependencies {
     implementation(libs.spring.boot.starter.web)
     testImplementation(kotlin("test"))
     testImplementation("com.microsoft.playwright:playwright:1.62.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.14.4")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:6.1.3")
 }
 
 tasks.test {
